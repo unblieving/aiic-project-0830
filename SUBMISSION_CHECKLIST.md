@@ -16,6 +16,7 @@
 
 - [ ] 项目已部署在服务器 `43.132.173.100`
 - [ ] 对外暴露 80 端口
+- [ ] 语音模式使用 HTTPS 访问，例如 `nohup cloudflared tunnel --url http://127.0.0.1:80 > tunnel.log 2>&1 &`
 - [ ] `.env` 未提交到 GitHub
 - [ ] 服务器上配置的是 `DEEPSEEK_API_KEY`
 - [ ] 没有使用 OpenAI API

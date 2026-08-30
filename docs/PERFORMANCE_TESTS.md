@@ -48,11 +48,17 @@ Text mode:
 Voice mode:
 
 1. Configure `VOLCENGINE_API_KEY`.
-2. Open product link in browser.
-3. Choose real-time conversation mode.
-4. Confirm TTS prompt plays once.
-5. Confirm recording starts only after the AI prompt finishes.
-6. Submit answer and confirm transcript enters the same `/api/answer` flow.
+2. Start an HTTPS tunnel on the server:
+
+```bash
+nohup cloudflared tunnel --url http://127.0.0.1:80 > tunnel.log 2>&1 &
+```
+
+3. Open the generated `https://...trycloudflare.com` URL in browser.
+4. Choose real-time conversation mode.
+5. Confirm TTS prompt plays once.
+6. Confirm recording starts only after the AI prompt finishes.
+7. Submit answer and confirm transcript enters the same `/api/answer` flow.
 
 ## Performance Expectations For Demo
 

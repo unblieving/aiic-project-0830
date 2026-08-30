@@ -3,8 +3,10 @@
 ## Submission Links
 
 - Product link: http://43.132.173.100
+- Voice-mode HTTPS link: use the current Cloudflare Tunnel URL generated on the server.
 - GitHub repository: https://github.com/unblieving/aiic-project-0830
 - Product Memo: [PRODUCT_MEMO.md](../PRODUCT_MEMO.md)
+
 ## One-line Pitch
 
 AI Interview Recall Trainer helps first-time technical interview candidates turn knowledge they have already learned into answers they can actively recall under interview pressure.
@@ -40,6 +42,7 @@ The final evidence is a change in hint dependency, for example `L2 -> L0`, rathe
 ## Demo Reliability Notes
 
 - Text mode is the primary MVP path and does not depend on voice services.
+- Voice mode should be opened through an HTTPS Cloudflare Tunnel because browser microphone access requires a secure context.
 - If `DEEPSEEK_API_KEY` is missing or unavailable, deterministic mock content keeps the recall loop usable.
 - If voice TTS/ASR fails, the app falls back to text display/submission so the demo can continue.
 - No `.env`, API keys, tokens, or private credentials are committed.

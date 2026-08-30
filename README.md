@@ -106,6 +106,14 @@ Run `python server.py` on the server and expose port 80. The current public demo
 http://43.132.173.100
 ```
 
+For voice mode, browsers require a secure context for microphone access. Use a Cloudflare Tunnel or another HTTPS proxy in front of the local HTTP server:
+
+```bash
+nohup cloudflared tunnel --url http://127.0.0.1:80 > tunnel.log 2>&1 &
+```
+
+Then open the generated `https://...trycloudflare.com` URL for voice-mode testing. Text mode can still be tested through the direct HTTP link.
+
 ## Scope
 
 The MVP is intentionally narrow. It does not include login, persistent dashboard, ranking, social sharing, video interview, complex RAG, database-backed history, or broad teaching content.
