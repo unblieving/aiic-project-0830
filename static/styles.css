@@ -239,7 +239,148 @@ button.secondary:hover {
   line-height: 1.6;
 }
 
-/* Voice controls */
+/* Mode selection cards */
+.mode-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.mode-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 20px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.2s;
+  min-height: 140px;
+}
+
+.mode-card:hover {
+  border-color: var(--primary);
+  background: #f0faf7;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(18, 107, 93, 0.12);
+}
+
+.mode-icon {
+  font-size: 36px;
+}
+
+.mode-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.mode-desc {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* Voice live conversation mode */
+.voice-live {
+  margin: 16px 0;
+}
+
+.mic-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.mic-icon {
+  font-size: 28px;
+}
+
+.mic-indicator.listening .mic-icon {
+  animation: pulse 1.5s infinite;
+}
+
+.mic-indicator.speaking .mic-icon {
+  animation: none;
+}
+
+.mic-indicator.processing .mic-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.mic-label {
+  font-size: 15px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.voice-transcript {
+  margin: 8px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafb;
+  min-height: 80px;
+}
+
+.transcript-interim {
+  color: var(--muted);
+  line-height: 1.7;
+  font-size: 15px;
+}
+
+.transcript-final {
+  color: var(--text);
+  font-weight: 600;
+  line-height: 1.7;
+  font-size: 16px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.transcript-final:empty {
+  display: none;
+}
+
+/* Silence auto-submit bar */
+.silence-bar {
+  position: relative;
+  height: 28px;
+  margin-top: 10px;
+  border-radius: 14px;
+  background: #e9edf1;
+  overflow: hidden;
+}
+
+.silence-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--primary);
+  border-radius: 14px;
+  transition: width 0.3s linear;
+}
+
+.silence-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Voice controls (legacy, kept for compat) */
 .voice-controls {
   display: flex;
   align-items: center;
@@ -292,30 +433,12 @@ button.secondary:hover {
   font-size: 14px;
 }
 
-.voice-transcript {
-  margin: 8px 0;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #f8fafb;
-  min-height: 60px;
+.voice-disabled {
+  opacity: 0.5;
+  cursor: not-allowed !important;
 }
 
-.transcript-text {
-  color: var(--muted);
-  line-height: 1.6;
-}
-
-.transcript-final {
-  color: var(--text);
-  font-weight: 600;
-  line-height: 1.6;
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px solid var(--line);
-}
-
-/* TTS controls */
+/* TTS controls (legacy) */
 .tts-panel {
   display: flex;
   align-items: center;
@@ -339,11 +462,6 @@ button.secondary:hover {
   font-weight: 400;
   font-size: 14px;
   color: var(--muted);
-}
-
-.voice-disabled {
-  opacity: 0.5;
-  cursor: not-allowed !important;
 }
 
 @media (max-width: 640px) {

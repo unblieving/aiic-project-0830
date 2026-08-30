@@ -57,7 +57,7 @@ class ApiTests(unittest.TestCase):
             def generate_retest(self, topic, question):
                 return "retest"
 
-            def judge_recall(self, question, answer):
+            def judge_recall(self, question, answer, voice_context=""):
                 return "L0"
 
         app = ApiApp(llm=BrokenLlm())
@@ -112,7 +112,7 @@ class ApiTests(unittest.TestCase):
             def generate_retest(self, topic, question):
                 return "DeepSeek 生成的 TCP 变式题？"
 
-            def judge_recall(self, question, answer):
+            def judge_recall(self, question, answer, voice_context=""):
                 return "L0"
 
         app = ApiApp(llm=FakeLlm())
@@ -145,7 +145,7 @@ class ApiTests(unittest.TestCase):
             def generate_retest(self, topic, question):
                 return "如果只有两次握手会怎样？"
 
-            def judge_recall(self, question, answer):
+            def judge_recall(self, question, answer, voice_context=""):
                 return "recall_failure" if "不会" in answer else "L0"
 
             def generate_standard_answer(self, topic, question):
@@ -182,7 +182,7 @@ class ApiTests(unittest.TestCase):
             def generate_retest(self, topic, question):
                 return "retest"
 
-            def judge_recall(self, question, answer):
+            def judge_recall(self, question, answer, voice_context=""):
                 return "knowledge_gap"
 
             def generate_reference_answer(self, topic, question):
@@ -222,7 +222,7 @@ class ApiTests(unittest.TestCase):
             def generate_retest(self, topic, question):
                 return "retest"
 
-            def judge_recall(self, question, answer):
+            def judge_recall(self, question, answer, voice_context=""):
                 return "recall_failure"
 
             def generate_reference_answer(self, topic, question):
@@ -258,7 +258,7 @@ class ApiTests(unittest.TestCase):
             def generate_retest(self, topic, question):
                 return "retest"
 
-            def judge_recall(self, question, answer):
+            def judge_recall(self, question, answer, voice_context=""):
                 return "knowledge_gap"
 
             def generate_reference_answer(self, topic, question):

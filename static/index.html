@@ -8,6 +8,7 @@
   </head>
   <body>
     <main class="shell">
+      <!-- ==================== SETUP ==================== -->
       <section id="setup" class="panel">
         <p class="eyebrow">AI 面试知识提取训练器</p>
         <h1>让存量知识，答得出来</h1>
@@ -42,6 +43,26 @@
         </form>
       </section>
 
+      <!-- ==================== MODE SELECTION ==================== -->
+      <section id="mode-select" class="panel hidden">
+        <p class="eyebrow">选择训练模式</p>
+        <h2>你想怎么回答？</h2>
+        <div class="mode-cards">
+          <button type="button" id="mode-text" class="mode-card">
+            <span class="mode-icon">⌨️</span>
+            <span class="mode-title">文本模式</span>
+            <span class="mode-desc">打字输入回答，适合安静环境</span>
+          </button>
+          <button type="button" id="mode-voice" class="mode-card">
+            <span class="mode-icon">🎙️</span>
+            <span class="mode-title">实时对话模式</span>
+            <span class="mode-desc">语音实时识别，模拟面试对话</span>
+          </button>
+        </div>
+        <p id="mode-error" class="error" role="alert"></p>
+      </section>
+
+      <!-- ==================== TRAINING ==================== -->
       <section id="training" class="panel hidden">
         <div class="topline">
           <span id="status-pill" class="pill">QUESTION</span>
@@ -50,44 +71,48 @@
         <h2 id="question"></h2>
         <div id="coach-box" class="coach hidden"></div>
 
-        <!-- Voice controls -->
-        <div id="voice-panel">
-          <div id="voice-controls" class="voice-controls">
-            <button id="start-voice" type="button" class="voice-btn" title="开始语音回答">
-              🎤 语音回答
-            </button>
-            <button id="stop-voice" type="button" class="voice-btn voice-btn-stop hidden" title="结束录音">
-              ⏹ 结束录音
-            </button>
-            <span id="voice-status" class="voice-status-text"></span>
-          </div>
-          <div id="voice-transcript" class="voice-transcript hidden">
-            <div id="transcript-text" class="transcript-text"></div>
-            <div id="transcript-final" class="transcript-final hidden"></div>
+        <!-- ===== TEXT MODE UI ===== -->
+        <div id="text-mode-ui" class="hidden">
+          <textarea id="answer" rows="7" placeholder="输入回答……"></textarea>
+          <p id="training-error" class="error" role="alert"></p>
+          <div class="actions">
+            <button id="submit-answer" type="button">提交回答</button>
+            <button id="stuck" type="button" class="secondary">我卡住了</button>
+            <button id="recovered" type="button" class="secondary hidden">我想起来了</button>
+            <button id="more-scaffold" type="button" class="secondary hidden">继续提示</button>
+            <button id="show-result" type="button" class="secondary hidden">查看结果</button>
           </div>
         </div>
 
-        <textarea id="answer" rows="7" placeholder="输入回答……"></textarea>
-        <p id="training-error" class="error" role="alert"></p>
-        <div class="actions">
-          <button id="submit-answer" type="button">提交回答</button>
-          <button id="stuck" type="button" class="secondary">我卡住了</button>
-          <button id="recovered" type="button" class="secondary hidden">我想起来了</button>
-          <button id="more-scaffold" type="button" class="secondary hidden">继续提示</button>
-          <button id="show-result" type="button" class="secondary hidden">查看结果</button>
+        <!-- ===== VOICE MODE UI ===== -->
+        <div id="voice-mode-ui" class="hidden">
+          <div class="voice-live">
+            <div id="mic-indicator" class="mic-indicator">
+              <span class="mic-icon">🎙️</span>
+              <span id="mic-label" class="mic-label">正在聆听…</span>
+            </div>
+            <div id="voice-transcript" class="voice-transcript">
+              <div id="transcript-interim" class="transcript-interim">等待你开口…</div>
+              <div id="transcript-final" class="transcript-final"></div>
+            </div>
+            <div id="silence-bar" class="silence-bar hidden">
+              <div id="silence-fill" class="silence-fill"></div>
+              <span id="silence-label" class="silence-label"></span>
+            </div>
+          </div>
+          <p id="voice-error" class="error" role="alert"></p>
+          <div class="actions">
+            <button id="voice-submit" type="button">提交回答</button>
+            <button id="voice-stuck" type="button" class="secondary">我卡住了</button>
+            <button id="voice-recovered" type="button" class="secondary hidden">我想起来了</button>
+            <button id="voice-more-scaffold" type="button" class="secondary hidden">继续提示</button>
+            <button id="voice-show-result" type="button" class="secondary hidden">查看结果</button>
+            <button id="voice-mute" type="button" class="secondary">🔇 静音朗读</button>
+          </div>
         </div>
-
-        <!-- TTS playback controls -->
-        <div id="tts-panel" class="tts-panel hidden">
-          <button id="tts-play" type="button" class="secondary tts-btn">🔊 播放语音</button>
-          <button id="tts-stop" type="button" class="secondary tts-btn hidden">⏸ 停止</button>
-          <label class="tts-toggle">
-            <input type="checkbox" id="tts-auto" checked /> 自动播放语音
-          </label>
-        </div>
-        <audio id="tts-audio" class="hidden"></audio>
       </section>
 
+      <!-- ==================== RESULT ==================== -->
       <section id="result" class="panel hidden">
         <p class="eyebrow">本次知识提取训练</p>
         <h2>刚才卡住的知识，现在是否调出来了？</h2>

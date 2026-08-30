@@ -1,544 +1,523 @@
-const state = {
-  sessionId: null,
-  lastPayload: null,
-};
+// ============================================================
+// State
+// ============================================================
 
-// Voice state
-const voiceState = {
-  asrConfigured: false,
-  ttsConfigured: false,
-  wsPort: 8082,
-  ws: null,
-  audioContext: null,
-  mediaStream: null,
-  scriptProcessor: null,
-  analyser: null,
-  isRecording: false,
-  recordingStartTime: 0,
-  firstSpeechTime: 0,
-  maxPauseMs: 0,
-  currentPauseStart: 0,
-  isSpeaking: false,
-  finalTranscript: "",
-  partialTranscript: "",
+const state = { sessionId: null, lastPayload: null, mode: null };
+
+const voice = {
+  asrConfigured: false, ttsConfigured: false, wsPort: 8082,
+  ws: null, audioContext: null, mediaStream: null,
+  scriptProcessor: null, analyser: null,
+  isRecording: false, recordingStartTime: 0, firstSpeechTime: 0,
+  maxPauseMs: 0, currentPauseStart: 0, isSpeaking: false,
+  finalTranscript: "", partialTranscript: "",
+  turnState: "IDLE", isMuted: false, ttsAudio: null, _ttsOnEnd: null,
+  silenceTimer: null, silenceStart: 0, silenceBarInterval: null,
+  autoSubmitDelay: 3500,
 };
 
 const domainNames = {
-  network: "计算机网络",
-  os: "操作系统",
-  db: "数据库",
-  ds: "数据结构",
-  java: "Java / JVM / 并发",
-  redis: "Redis",
-  system_design: "系统设计",
+  network: "计算机网络", os: "操作系统", db: "数据库",
+  ds: "数据结构", java: "Java / JVM / 并发",
+  redis: "Redis", system_design: "系统设计",
 };
 
-const ratingNames = {
-  low: "低",
-  mid: "中",
-  medium: "中",
-  high: "高",
-};
+// Check voice status on load
+(async function () {
+  try {
+    const s = await api("/api/voice-status");
+    if (s && !s.error) {
+      voice.asrConfigured = s.asr_configured;
+      voice.ttsConfigured = s.tts_configured;
+      voice.wsPort = s.ws_port || 8082;
+    }
+  } catch (e) { /* ok */ }
+})();
 
-const setup = document.querySelector("#setup");
-const training = document.querySelector("#training");
-const result = document.querySelector("#result");
-const ratings = document.querySelector("#ratings");
-const answer = document.querySelector("#answer");
-const coachBox = document.querySelector("#coach-box");
-const trainingError = document.querySelector("#training-error");
-
-document.querySelectorAll("input[name='domain']").forEach((input) => {
-  input.addEventListener("change", renderRatings);
+// Setup form
+document.querySelectorAll("input[name='domain']").forEach((el) => {
+  el.addEventListener("change", renderRatings);
 });
 
 document.querySelector("#setup-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  const submit = event.submitter || document.querySelector("#setup-form button[type='submit']");
+  const btn = event.submitter || document.querySelector("#setup-form button[type='submit']");
   const domains = selectedDomains();
-  const error = document.querySelector("#setup-error");
-  error.textContent = "";
-  if (domains.length < 1 || domains.length > 3) {
-    error.textContent = "请选择 1 到 3 个知识领域。";
-    return;
-  }
+  const err = document.querySelector("#setup-error");
+  err.textContent = "";
+  if (domains.length < 1 || domains.length > 3) { err.textContent = "请选择 1 到 3 个知识领域。"; return; }
   const selfRatings = {};
-  domains.forEach((domain) => {
-    selfRatings[domain] = document.querySelector(`#rating-${domain}`).value;
-  });
-  setBusy(submit, true, "生成中...");
+  domains.forEach((d) => { selfRatings[d] = document.querySelector(`#rating-${d}`).value; });
+  setBusy(btn, true, "生成中...");
   const payload = await api("/api/session", {
-    role: document.querySelector("#role").value,
-    domains,
-    selfRatings,
+    role: document.querySelector("#role").value, domains, selfRatings,
   });
-  setBusy(submit, false);
-  if (payload.error) {
-    error.textContent = payload.error;
-    return;
-  }
+  setBusy(btn, false);
+  if (payload.error) { err.textContent = payload.error; return; }
   state.sessionId = payload.id;
-  showTraining(payload);
+  state.lastPayload = payload;
+  document.querySelector("#setup").classList.add("hidden");
+  document.querySelector("#mode-select").classList.remove("hidden");
 });
 
+// Mode selection
+document.querySelector("#mode-text").addEventListener("click", () => {
+  state.mode = "text";
+  document.querySelector("#mode-select").classList.add("hidden");
+  document.querySelector("#training").classList.remove("hidden");
+  document.querySelector("#text-mode-ui").classList.remove("hidden");
+  document.querySelector("#voice-mode-ui").classList.add("hidden");
+  showTraining(state.lastPayload);
+});
+
+document.querySelector("#mode-voice").addEventListener("click", () => {
+  const me = document.querySelector("#mode-error");
+  me.textContent = "";
+  if (!voice.asrConfigured) {
+    me.textContent = "语音服务未配置。请设置 VOLCENGINE_API_KEY，或选择文本模式。";
+    return;
+  }
+  state.mode = "voice";
+  document.querySelector("#mode-select").classList.add("hidden");
+  document.querySelector("#training").classList.remove("hidden");
+  document.querySelector("#text-mode-ui").classList.add("hidden");
+  document.querySelector("#voice-mode-ui").classList.remove("hidden");
+  showTraining(state.lastPayload);
+});
+
+// Text mode buttons
 document.querySelector("#stuck").addEventListener("click", async () => {
-  const payload = await api("/api/stuck", { sessionId: state.sessionId });
-  showTraining(payload);
+  showTraining(await api("/api/stuck", { sessionId: state.sessionId }));
 });
-
 document.querySelector("#more-scaffold").addEventListener("click", async () => {
-  const payload = await api("/api/scaffold", {
-    sessionId: state.sessionId,
-    answer: answer.value,
-  });
-  showTraining(payload);
+  showTraining(await api("/api/scaffold", {
+    sessionId: state.sessionId, answer: document.querySelector("#answer").value,
+  }));
 });
-
 document.querySelector("#recovered").addEventListener("click", async () => {
-  const payload = await api("/api/scaffold", {
-    sessionId: state.sessionId,
-    answer: answer.value,
-    recovered: true,
-  });
-  showTraining(payload);
+  showTraining(await api("/api/scaffold", {
+    sessionId: state.sessionId, answer: document.querySelector("#answer").value, recovered: true,
+  }));
 });
-
 document.querySelector("#submit-answer").addEventListener("click", async () => {
-  const text = answer.value.trim();
-  if (!text) {
-    trainingError.textContent = "请先输入你的回答，哪怕只有一个确定的点。";
-    return;
-  }
-  const requestBody = { sessionId: state.sessionId, answer: text };
-
-  // If voice mode was used, include voice signals
-  if (voiceState.finalTranscript || voiceState.partialTranscript) {
-    requestBody.inputMode = "voice";
-    requestBody.voiceSignals = getVoiceSignals();
-  }
-
-  const payload = await api("/api/answer", requestBody);
-  resetVoiceState();
-  showTraining(payload);
+  const t = document.querySelector("#answer").value.trim();
+  if (!t) { document.querySelector("#training-error").textContent = "请先输入你的回答。"; return; }
+  showTraining(await api("/api/answer", { sessionId: state.sessionId, answer: t }));
 });
+document.querySelector("#show-result").addEventListener("click", () => showResult());
 
-document.querySelector("#show-result").addEventListener("click", () => {
-  showResult(state.lastPayload.summary);
+// Voice mode buttons
+document.querySelector("#voice-stuck").addEventListener("click", async () => {
+  stopVoiceRecording(); setTurnState("PROCESSING");
+  showTraining(await api("/api/stuck", { sessionId: state.sessionId }));
 });
-
-document.querySelector("#restart").addEventListener("click", () => {
-  window.location.reload();
+document.querySelector("#voice-more-scaffold").addEventListener("click", async () => {
+  stopVoiceRecording(); setTurnState("PROCESSING");
+  showTraining(await api("/api/scaffold", { sessionId: state.sessionId, answer: voice.finalTranscript }));
 });
+document.querySelector("#voice-recovered").addEventListener("click", async () => {
+  stopVoiceRecording(); setTurnState("PROCESSING");
+  showTraining(await api("/api/scaffold", {
+    sessionId: state.sessionId, answer: voice.finalTranscript, recovered: true,
+  }));
+});
+document.querySelector("#voice-submit").addEventListener("click", () => submitVoiceAnswer());
+document.querySelector("#voice-show-result").addEventListener("click", () => showResult());
+document.querySelector("#voice-mute").addEventListener("click", () => {
+  voice.isMuted = !voice.isMuted;
+  document.querySelector("#voice-mute").textContent = voice.isMuted ? "🔊 开启朗读" : "🔇 静音朗读";
+  if (voice.isMuted && voice.ttsAudio) { voice.ttsAudio.pause(); voice.ttsAudio.currentTime = 0; onTTSEnd(); }
+});
+document.querySelector("#restart").addEventListener("click", () => window.location.reload());
 
-// Voice: check status on load
-(async function checkVoiceStatus() {
-  try {
-    const status = await api("/api/voice-status");
-    if (status && !status.error) {
-      voiceState.asrConfigured = status.asr_configured;
-      voiceState.ttsConfigured = status.tts_configured;
-      voiceState.wsPort = status.ws_port || 8082;
-    }
-  } catch (e) {
-    // Voice not available
-  }
-  updateVoiceUI();
-})();
-
-// Voice: start recording
-document.querySelector("#start-voice").addEventListener("click", startVoiceRecording);
-document.querySelector("#stop-voice").addEventListener("click", stopVoiceRecording);
-
-// TTS: play/stop
-document.querySelector("#tts-play").addEventListener("click", playTTS);
-document.querySelector("#tts-stop").addEventListener("click", stopTTS);
-
-function renderRatings() {
-  ratings.innerHTML = "";
-  selectedDomains().forEach((domain) => {
-    const label = document.createElement("label");
-    label.textContent = `${domainNames[domain]}自评`;
-    const select = document.createElement("select");
-    select.id = `rating-${domain}`;
-    select.innerHTML = `
-      <option value="high">高</option>
-      <option value="mid">中</option>
-      <option value="low">低</option>
-    `;
-    label.appendChild(select);
-    ratings.appendChild(label);
-  });
+// Turn-taking state
+function setTurnState(s) {
+  voice.turnState = s;
+  const ind = document.querySelector("#mic-indicator");
+  const lbl = document.querySelector("#mic-label");
+  if (!ind || !lbl) return;
+  ind.className = "mic-indicator";
+  if (s === "AI_SPEAKING") { ind.classList.add("speaking"); lbl.textContent = "AI 正在说话…"; }
+  else if (s === "USER_READY") { lbl.textContent = "请开始回答"; }
+  else if (s === "USER_SPEAKING") { ind.classList.add("listening"); lbl.textContent = "正在聆听…"; }
+  else if (s === "PROCESSING") { ind.classList.add("processing"); lbl.textContent = "处理中…"; }
+  else { lbl.textContent = ""; }
 }
 
-function selectedDomains() {
-  return Array.from(document.querySelectorAll("input[name='domain']:checked")).map((input) => input.value);
-}
-
-async function api(path, payload) {
-  try {
-    const response = await fetch(path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-      return { error: "服务暂时不可用，请稍后重试。" };
-    }
-    return response.json();
-  } catch (_error) {
-    return { error: "网络连接失败，请确认服务正在运行。" };
-  }
-}
-
-function setBusy(button, busy, label) {
-  if (!button) {
-    return;
-  }
-  if (busy) {
-    button.dataset.originalText = button.textContent;
-    button.textContent = label;
-    button.disabled = true;
-  } else {
-    button.textContent = button.dataset.originalText || button.textContent;
-    button.disabled = false;
-  }
-}
+// ============================================================
+// Show training state
+// ============================================================
 
 function showTraining(payload) {
   state.lastPayload = payload;
-  if (payload.error) {
-    trainingError.textContent = payload.error;
-    return;
-  }
-  setup.classList.add("hidden");
-  result.classList.add("hidden");
-  training.classList.remove("hidden");
-  trainingError.textContent = "";
   document.querySelector("#status-pill").textContent = payload.status;
-  document.querySelector("#topic").textContent = `${payload.current.topic} · 自评 ${ratingNames[payload.current.self_rating]}`;
+  document.querySelector("#topic").textContent = payload.current.topic;
   document.querySelector("#question").textContent = payload.current.question;
-  coachBox.textContent = payload.scaffold || payload.notice || "";
-  coachBox.classList.toggle("hidden", !payload.scaffold && !payload.notice);
-  answer.value = "";
 
-  const inScaffold = payload.status.startsWith("SCAFFOLD");
-  const isResult = payload.status === "RESULT";
-  document.querySelector("#stuck").classList.toggle("hidden", payload.status !== "QUESTION");
-  document.querySelector("#recovered").classList.toggle("hidden", !inScaffold);
-  document.querySelector("#more-scaffold").classList.toggle("hidden", !inScaffold);
-  document.querySelector("#submit-answer").classList.toggle("hidden", isResult || inScaffold);
-  document.querySelector("#show-result").classList.toggle("hidden", !isResult);
+  const ids = ["stuck","recovered","more-scaffold","show-result",
+               "voice-stuck","voice-recovered","voice-more-scaffold","voice-show-result"];
+  ids.forEach((id) => {
+    const el = document.querySelector(`#${id}`);
+    if (el) el.classList.add("hidden");
+  });
+  document.querySelector("#coach-box").classList.add("hidden");
+
+  const show = (id) => { const el = document.querySelector(`#${id}`); if (el) el.classList.remove("hidden"); };
+
+  if (payload.status === "QUESTION") {
+    show("stuck"); show("voice-stuck");
+    if (state.mode === "text") {
+      document.querySelector("#answer").value = "";
+      document.querySelector("#answer").focus();
+    } else {
+      resetVoiceTranscript();
+      playTTSAndThenListen(payload.current.question);
+    }
+  }
+
+  if (payload.status && payload.status.startsWith("SCAFFOLD")) {
+    document.querySelector("#coach-box").textContent = payload.scaffold || "";
+    document.querySelector("#coach-box").classList.remove("hidden");
+    show("recovered"); show("more-scaffold");
+    show("voice-recovered"); show("voice-more-scaffold");
+    if (state.mode === "voice") {
+      resetVoiceTranscript();
+      playTTSAndThenListen(payload.scaffold || "");
+    }
+  }
 
   if (payload.status === "REANSWER") {
-    coachBox.textContent = payload.scaffold || "好，现在不看刚才的提示，重新完整回答一次最开始的问题。";
-    coachBox.classList.remove("hidden");
+    const txt = payload.scaffold || "好，现在不看刚才的提示，重新完整回答一次最开始的问题。";
+    document.querySelector("#coach-box").textContent = txt;
+    document.querySelector("#coach-box").classList.remove("hidden");
+    if (state.mode === "voice") { resetVoiceTranscript(); playTTSAndThenListen(txt); }
   }
 
-  // TTS: load audio for question or scaffold
-  const ttsText = payload.scaffold || payload.current.question;
-  loadTTSAudio(ttsText);
-}
-
-function showResult(summary) {
-  training.classList.add("hidden");
-  result.classList.remove("hidden");
-  const metrics = document.querySelector("#metrics");
-  metrics.replaceChildren(
-    metricNode("训练知识点", summary.trained_topics),
-    metricNode("首次独立提取", summary.independent_first),
-    metricNode("Improved Recall", summary.improvedRecallCount ?? summary.improved_recall ?? 0),
-    metricNode("发生 Recall Failure", summary.recall_failures),
-    metricNode("Knowledge Gap", summary.knowledgeGapCount ?? summary.knowledge_gaps ?? 0),
-    metricNode("训练后独立提取", summary.verified_after_training)
-  );
-
-  const attempts = document.querySelector("#attempts");
-  attempts.replaceChildren(...summary.attempts.map(attemptNode));
-}
-
-function metricNode(label, value) {
-  const node = document.createElement("div");
-  node.className = "metric";
-  node.append(document.createTextNode(label));
-  const strong = document.createElement("strong");
-  strong.textContent = value;
-  node.append(strong);
-  return node;
-}
-
-function attemptNode(attempt) {
-  const article = document.createElement("article");
-  article.className = "attempt";
-  const title = document.createElement("h3");
-  title.textContent = attempt.topic;
-  const rating = document.createElement("p");
-  rating.textContent = `自评：${ratingNames[attempt.self_rating] || attempt.self_rating}`;
-  const first = document.createElement("p");
-  first.textContent = `首次：${attempt.first_recall_level}`;
-  const retest = document.createElement("p");
-  retest.textContent = `变式重测：${attempt.retest_recall_level}${attempt.verified ? " ✓" : ""}`;
-  const transition = document.createElement("p");
-  transition.className = "transition";
-  transition.textContent = `${attempt.transition}${attempt.verified ? " ✓" : ""}`;
-  article.append(title, rating, first);
-  if (attempt.knowledge_gap) {
-    const gap = document.createElement("p");
-    gap.className = "gap-label";
-    gap.textContent = "Knowledge Gap";
-    const userAnswer = document.createElement("p");
-    userAnswer.textContent = `你的回答：${attempt.user_answer || "未形成有效回答"}`;
-    const referenceTitle = document.createElement("p");
-    referenceTitle.textContent = "参考答案：";
-    const standard = document.createElement("pre");
-    standard.className = "standard-answer";
-    standard.textContent = formatReferenceAnswer(attempt);
-    article.append(gap, userAnswer, referenceTitle, standard);
-  } else {
-    article.append(retest, transition);
+  if (payload.status === "RETEST") {
+    show("stuck"); show("voice-stuck");
+    if (state.mode === "text") {
+      document.querySelector("#answer").value = "";
+      document.querySelector("#answer").focus();
+    } else {
+      resetVoiceTranscript();
+      playTTSAndThenListen(payload.current.question);
+    }
   }
-  return article;
+
+  if (payload.status === "DONE") {
+    show("show-result"); show("voice-show-result");
+    if (state.mode === "voice") {
+      stopVoiceRecording(); setTurnState("IDLE");
+      playTTSText("本轮训练完成！点击查看结果。");
+    }
+  }
+
+  const errEl = state.mode === "voice" ? document.querySelector("#voice-error") : document.querySelector("#training-error");
+  if (errEl) errEl.textContent = payload.notice || "";
 }
 
-function formatReferenceAnswer(attempt) {
-  if (attempt.reference_answer && Array.isArray(attempt.key_points)) {
-    const points = attempt.key_points.map((point) => `• ${point}`).join("\n");
-    return `${attempt.reference_answer}\n\n关键点：\n${points}`;
-  }
-  return attempt.standard_answer || "已记录为知识缺口。";
+async function showResult() {
+  if (state.mode === "voice") stopVoiceRecording();
+  const payload = await api(`/api/result?sessionId=${state.sessionId}`);
+  document.querySelector("#training").classList.add("hidden");
+  document.querySelector("#result").classList.remove("hidden");
+  renderResult(payload);
 }
 
 // ============================================================
-// Voice Functions
+// TTS: play text, then start listening
 // ============================================================
 
-function updateVoiceUI() {
-  const startBtn = document.querySelector("#start-voice");
-  const ttsPanel = document.querySelector("#tts-panel");
-  if (!voiceState.asrConfigured) {
-    startBtn.classList.add("voice-disabled");
-    startBtn.title = "Voice service is not configured";
-  } else {
-    startBtn.classList.remove("voice-disabled");
-    startBtn.title = "开始语音回答";
-  }
-  if (voiceState.ttsConfigured) {
-    ttsPanel.classList.remove("hidden");
-  } else {
-    ttsPanel.classList.add("hidden");
-  }
-}
-
-async function startVoiceRecording() {
-  if (!voiceState.asrConfigured) {
-    trainingError.textContent = "Voice service is not configured.";
+function playTTSAndThenListen(text) {
+  if (voice.isMuted || !voice.ttsConfigured) {
+    setTurnState("USER_READY");
+    startVoiceRecording();
     return;
   }
-  if (voiceState.isRecording) return;
-  trainingError.textContent = "";
-  const startBtn = document.querySelector("#start-voice");
-  const stopBtn = document.querySelector("#stop-voice");
-  const statusText = document.querySelector("#voice-status");
-  const transcriptPanel = document.querySelector("#voice-transcript");
-  const transcriptText = document.querySelector("#transcript-text");
-  const transcriptFinal = document.querySelector("#transcript-final");
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true }
-    });
-    voiceState.mediaStream = stream;
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-    voiceState.audioContext = audioCtx;
-    const source = audioCtx.createMediaStreamSource(stream);
-    const analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 256;
-    voiceState.analyser = analyser;
-    source.connect(analyser);
-    const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-    voiceState.scriptProcessor = processor;
-    analyser.connect(processor);
-    processor.connect(audioCtx.destination);
-    const wsUrl = `ws://${window.location.hostname}:${voiceState.wsPort}/ws/asr`;
+  setTurnState("AI_SPEAKING");
+  playTTSText(text, () => {
+    setTurnState("USER_READY");
+    startVoiceRecording();
+  });
+}
+
+function playTTSText(text, onEnd) {
+  if (!text) { if (onEnd) onEnd(); return; }
+  if (voice.ttsAudio) { voice.ttsAudio.pause(); voice.ttsAudio = null; }
+  voice._ttsOnEnd = onEnd || null;
+  api("/api/tts", { text }).then((result) => {
+    if (result && result.audio_base64) {
+      const audio = new Audio();
+      audio.src = `data:audio/${result.format || "mp3"};base64,${result.audio_base64}`;
+      voice.ttsAudio = audio;
+      audio.onended = () => onTTSEnd();
+      audio.onerror = () => onTTSEnd();
+      audio.play().catch(() => onTTSEnd());
+    } else { onTTSEnd(); }
+  }).catch(() => onTTSEnd());
+}
+
+function onTTSEnd() {
+  const cb = voice._ttsOnEnd;
+  voice._ttsOnEnd = null;
+  if (cb) cb();
+}
+
+// ============================================================
+// Voice Recording (Volcengine ASR via WebSocket proxy)
+// ============================================================
+
+function startVoiceRecording() {
+  if (voice.isRecording || voice.turnState === "AI_SPEAKING") return;
+  setTurnState("USER_SPEAKING");
+  navigator.mediaDevices.getUserMedia({
+    audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true }
+  }).then((stream) => {
+    voice.mediaStream = stream;
+    const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    voice.audioContext = ctx;
+    const src = ctx.createMediaStreamSource(stream);
+    const an = ctx.createAnalyser(); an.fftSize = 256;
+    voice.analyser = an; src.connect(an);
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    voice.scriptProcessor = proc; an.connect(proc); proc.connect(ctx.destination);
+    const wsUrl = `ws://${window.location.hostname}:${voice.wsPort}/ws/asr`;
     const ws = new WebSocket(wsUrl);
-    voiceState.ws = ws;
-    ws.onopen = () => { ws.send(JSON.stringify({ type: "start" })); };
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "started") {
-        statusText.textContent = "🔴 录音中...";
-        startBtn.classList.add("recording");
-      } else if (msg.type === "transcript") {
-        if (msg.isFinal) {
-          voiceState.finalTranscript = msg.text;
-          transcriptFinal.textContent = msg.text;
-          transcriptFinal.classList.remove("hidden");
-          answer.value = msg.text;
-        } else {
-          voiceState.partialTranscript = msg.text;
-          transcriptText.textContent = msg.text;
-          answer.value = msg.text;
-        }
-      } else if (msg.type === "error") {
-        statusText.textContent = `错误: ${msg.message}`;
-        trainingError.textContent = `语音识别错误: ${msg.message}`;
+    voice.ws = ws;
+    ws.onopen = () => ws.send(JSON.stringify({ type: "start" }));
+    ws.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === "transcript") handleTranscript(msg);
+      else if (msg.type === "error") {
+        const ve = document.querySelector("#voice-error");
+        if (ve) ve.textContent = `语音识别错误: ${msg.message}`;
       }
     };
     ws.onerror = () => {
-      statusText.textContent = "WebSocket 连接失败";
-      trainingError.textContent = "语音服务连接失败，请使用文字回答。";
+      const ve = document.querySelector("#voice-error");
+      if (ve) ve.textContent = "语音服务连接失败，请切换到文本模式。";
+      stopVoiceRecording();
     };
-    ws.onclose = () => {
-      if (voiceState.isRecording) statusText.textContent = "连接已断开";
-    };
-    voiceState.isRecording = true;
-    voiceState.recordingStartTime = Date.now();
-    voiceState.firstSpeechTime = 0;
-    voiceState.maxPauseMs = 0;
-    voiceState.currentPauseStart = 0;
-    voiceState.isSpeaking = false;
-    voiceState.finalTranscript = "";
-    voiceState.partialTranscript = "";
-    transcriptText.textContent = "";
-    transcriptFinal.textContent = "";
-    transcriptFinal.classList.add("hidden");
-    processor.onaudioprocess = (e) => {
-      if (!voiceState.isRecording) return;
-      const inputData = e.inputBuffer.getChannelData(0);
+    voice.isRecording = true;
+    voice.recordingStartTime = Date.now();
+    voice.firstSpeechTime = 0; voice.maxPauseMs = 0;
+    voice.currentPauseStart = 0; voice.isSpeaking = false;
+    proc.onaudioprocess = (e) => {
+      if (!voice.isRecording) return;
+      const d = e.inputBuffer.getChannelData(0);
       let sum = 0;
-      for (let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
-      const rms = Math.sqrt(sum / inputData.length);
-      const isSilent = rms < 0.01;
+      for (let i = 0; i < d.length; i++) sum += d[i] * d[i];
+      const rms = Math.sqrt(sum / d.length);
+      const silent = rms < 0.01;
       const now = Date.now();
-      if (!isSilent && !voiceState.isSpeaking) {
-        voiceState.isSpeaking = true;
-        if (voiceState.firstSpeechTime === 0) voiceState.firstSpeechTime = now;
-        if (voiceState.currentPauseStart > 0) {
-          const pauseDuration = now - voiceState.currentPauseStart;
-          if (pauseDuration > voiceState.maxPauseMs) voiceState.maxPauseMs = pauseDuration;
-          voiceState.currentPauseStart = 0;
+      if (!silent && !voice.isSpeaking) {
+        voice.isSpeaking = true;
+        if (voice.firstSpeechTime === 0) voice.firstSpeechTime = now;
+        if (voice.currentPauseStart > 0) {
+          const pd = now - voice.currentPauseStart;
+          if (pd > voice.maxPauseMs) voice.maxPauseMs = pd;
+          voice.currentPauseStart = 0;
         }
-      } else if (isSilent && voiceState.isSpeaking) {
-        voiceState.isSpeaking = false;
-        voiceState.currentPauseStart = now;
+        resetSilenceTimer();
+      } else if (silent && voice.isSpeaking) {
+        voice.isSpeaking = false;
+        voice.currentPauseStart = now;
+        startSilenceTimer();
       }
-      const pcm = new Int16Array(inputData.length);
-      for (let i = 0; i < inputData.length; i++) {
-        const s = Math.max(-1, Math.min(1, inputData[i]));
+      const pcm = new Int16Array(d.length);
+      for (let i = 0; i < d.length; i++) {
+        const s = Math.max(-1, Math.min(1, d[i]));
         pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
       }
-      let binary = "";
-      const bytes = new Uint8Array(pcm.buffer);
-      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-      const base64 = btoa(binary);
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "audio", audio: base64 }));
-      }
+      let bin = ""; const bytes = new Uint8Array(pcm.buffer);
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      if (ws.readyState === WebSocket.OPEN)
+        ws.send(JSON.stringify({ type: "audio", audio: btoa(bin) }));
     };
-    startBtn.classList.add("hidden");
-    stopBtn.classList.remove("hidden");
-    transcriptPanel.classList.remove("hidden");
-    statusText.textContent = "连接中...";
-  } catch (err) {
-    trainingError.textContent = `无法访问麦克风: ${err.message}`;
-    cleanupVoiceRecording();
+  }).catch((err) => {
+    const ve = document.querySelector("#voice-error");
+    if (ve) ve.textContent = `无法访问麦克风: ${err.message}`;
+    setTurnState("IDLE");
+  });
+}
+
+function handleTranscript(msg) {
+  const ie = document.querySelector("#transcript-interim");
+  const fe = document.querySelector("#transcript-final");
+  if (msg.isFinal) {
+    voice.finalTranscript = msg.text;
+    if (fe) fe.textContent = msg.text;
+    if (ie) ie.textContent = "";
+  } else {
+    voice.partialTranscript = msg.text;
+    if (ie) ie.textContent = msg.text;
   }
+  resetSilenceTimer();
 }
 
 function stopVoiceRecording() {
-  if (!voiceState.isRecording) return;
-  const statusText = document.querySelector("#voice-status");
-  statusText.textContent = "处理中...";
-  if (voiceState.ws && voiceState.ws.readyState === WebSocket.OPEN) {
-    voiceState.ws.send(JSON.stringify({ type: "stop" }));
-  }
-  if (voiceState.scriptProcessor) voiceState.scriptProcessor.disconnect();
-  if (voiceState.mediaStream) voiceState.mediaStream.getTracks().forEach((t) => t.stop());
-  voiceState.isRecording = false;
-  const startBtn = document.querySelector("#start-voice");
-  const stopBtn = document.querySelector("#stop-voice");
-  startBtn.classList.remove("hidden", "recording");
-  stopBtn.classList.add("hidden");
-  setTimeout(() => {
-    if (voiceState.ws) { voiceState.ws.close(); voiceState.ws = null; }
-    statusText.textContent = voiceState.finalTranscript ? "✓ 识别完成" : "录音结束";
-  }, 2000);
+  if (!voice.isRecording) return;
+  clearSilenceTimer();
+  if (voice.ws && voice.ws.readyState === WebSocket.OPEN)
+    voice.ws.send(JSON.stringify({ type: "stop" }));
+  if (voice.scriptProcessor) { voice.scriptProcessor.disconnect(); voice.scriptProcessor = null; }
+  if (voice.analyser) { voice.analyser.disconnect(); voice.analyser = null; }
+  if (voice.audioContext) { voice.audioContext.close().catch(() => {}); voice.audioContext = null; }
+  if (voice.mediaStream) { voice.mediaStream.getTracks().forEach((t) => t.stop()); voice.mediaStream = null; }
+  voice.isRecording = false;
+  setTimeout(() => { if (voice.ws) { voice.ws.close(); voice.ws = null; } }, 2000);
 }
 
-function cleanupVoiceRecording() {
-  if (voiceState.scriptProcessor) { voiceState.scriptProcessor.disconnect(); voiceState.scriptProcessor = null; }
-  if (voiceState.analyser) { voiceState.analyser.disconnect(); voiceState.analyser = null; }
-  if (voiceState.audioContext) { voiceState.audioContext.close().catch(() => {}); voiceState.audioContext = null; }
-  if (voiceState.mediaStream) { voiceState.mediaStream.getTracks().forEach((t) => t.stop()); voiceState.mediaStream = null; }
-  if (voiceState.ws) { voiceState.ws.close(); voiceState.ws = null; }
-  voiceState.isRecording = false;
+function resetVoiceTranscript() {
+  voice.finalTranscript = ""; voice.partialTranscript = "";
+  voice.recordingStartTime = 0; voice.firstSpeechTime = 0;
+  voice.maxPauseMs = 0; voice.currentPauseStart = 0; voice.isSpeaking = false;
+  const ie = document.querySelector("#transcript-interim");
+  const fe = document.querySelector("#transcript-final");
+  if (ie) ie.textContent = "等待你开口…";
+  if (fe) fe.textContent = "";
+  clearSilenceTimer();
+}
+
+// ============================================================
+// Silence detection & auto-submit
+// ============================================================
+
+function startSilenceTimer() {
+  clearSilenceTimer();
+  if (!voice.finalTranscript.trim() && !voice.partialTranscript.trim()) return;
+  voice.silenceStart = Date.now();
+  const bar = document.querySelector("#silence-bar");
+  const fill = document.querySelector("#silence-fill");
+  const lbl = document.querySelector("#silence-label");
+  if (bar) bar.classList.remove("hidden");
+  voice.silenceBarInterval = setInterval(() => {
+    const el = Date.now() - voice.silenceStart;
+    const pct = Math.min(100, (el / voice.autoSubmitDelay) * 100);
+    if (fill) fill.style.width = `${pct}%`;
+    const rem = Math.max(0, (voice.autoSubmitDelay - el) / 1000);
+    if (lbl) lbl.textContent = `${rem.toFixed(1)}s 后自动提交`;
+  }, 100);
+  voice.silenceTimer = setTimeout(() => submitVoiceAnswer(), voice.autoSubmitDelay);
+}
+
+function resetSilenceTimer() { clearSilenceTimer(); }
+
+function clearSilenceTimer() {
+  if (voice.silenceTimer) { clearTimeout(voice.silenceTimer); voice.silenceTimer = null; }
+  if (voice.silenceBarInterval) { clearInterval(voice.silenceBarInterval); voice.silenceBarInterval = null; }
+  const bar = document.querySelector("#silence-bar");
+  const fill = document.querySelector("#silence-fill");
+  if (bar) bar.classList.add("hidden");
+  if (fill) fill.style.width = "0%";
+}
+
+// ============================================================
+// Submit voice answer
+// ============================================================
+
+async function submitVoiceAnswer() {
+  clearSilenceTimer();
+  stopVoiceRecording();
+  setTurnState("PROCESSING");
+  const text = (voice.finalTranscript + " " + voice.partialTranscript).trim();
+  if (!text) {
+    const ve = document.querySelector("#voice-error");
+    if (ve) ve.textContent = "没有检测到语音，请重试。";
+    setTurnState("USER_READY");
+    startVoiceRecording();
+    return;
+  }
+  const vs = getVoiceSignals();
+  const payload = await api("/api/answer", {
+    sessionId: state.sessionId, answer: text,
+    inputMode: "voice", voiceSignals: vs,
+  });
+  showTraining(payload);
 }
 
 function getVoiceSignals() {
   const now = Date.now();
-  const answerDurationMs = voiceState.recordingStartTime ? now - voiceState.recordingStartTime : 0;
-  const firstSpeechLatencyMs = voiceState.firstSpeechTime ? voiceState.firstSpeechTime - voiceState.recordingStartTime : 0;
-  let maxPause = voiceState.maxPauseMs;
-  if (voiceState.currentPauseStart > 0 && !voiceState.isSpeaking) {
-    const endPause = now - voiceState.currentPauseStart;
-    if (endPause > maxPause) maxPause = endPause;
+  const dur = voice.recordingStartTime ? now - voice.recordingStartTime : 0;
+  const lat = voice.firstSpeechTime ? voice.firstSpeechTime - voice.recordingStartTime : 0;
+  let mp = voice.maxPauseMs;
+  if (voice.currentPauseStart > 0 && !voice.isSpeaking) {
+    const ep = now - voice.currentPauseStart;
+    if (ep > mp) mp = ep;
   }
-  return { answerDurationMs, firstSpeechLatencyMs, maxPauseMs: maxPause };
-}
-
-function resetVoiceState() {
-  cleanupVoiceRecording();
-  voiceState.finalTranscript = "";
-  voiceState.partialTranscript = "";
-  voiceState.recordingStartTime = 0;
-  voiceState.firstSpeechTime = 0;
-  voiceState.maxPauseMs = 0;
-  voiceState.currentPauseStart = 0;
-  voiceState.isSpeaking = false;
-  const transcriptPanel = document.querySelector("#voice-transcript");
-  const transcriptText = document.querySelector("#transcript-text");
-  const transcriptFinal = document.querySelector("#transcript-final");
-  const statusText = document.querySelector("#voice-status");
-  if (transcriptPanel) transcriptPanel.classList.add("hidden");
-  if (transcriptText) transcriptText.textContent = "";
-  if (transcriptFinal) { transcriptFinal.textContent = ""; transcriptFinal.classList.add("hidden"); }
-  if (statusText) statusText.textContent = "";
+  return { answerDurationMs: dur, firstSpeechLatencyMs: lat, maxPauseMs: mp };
 }
 
 // ============================================================
-// TTS Functions
+// API helper
 // ============================================================
 
-let currentTTSText = "";
+async function api(path, body) {
+  const opts = body ? {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  } : {};
+  const r = await fetch(path, opts);
+  return r.json();
+}
 
-function playTTS() {
-  if (!currentTTSText) return;
-  const audio = document.querySelector("#tts-audio");
-  if (audio.src) {
-    audio.play().catch(() => {});
-    document.querySelector("#tts-play").classList.add("hidden");
-    document.querySelector("#tts-stop").classList.remove("hidden");
+// ============================================================
+// UI helpers
+// ============================================================
+
+function setBusy(btn, busy, label) {
+  btn.disabled = busy;
+  if (busy) btn.dataset.originalText = btn.textContent;
+  btn.textContent = busy ? label : btn.dataset.originalText || btn.textContent;
+}
+
+function selectedDomains() {
+  return Array.from(document.querySelectorAll("input[name='domain']:checked")).map((i) => i.value);
+}
+
+function renderRatings() {
+  const domains = selectedDomains();
+  document.querySelector("#ratings").innerHTML = domains.map((d) => `
+    <label>${domainNames[d]} 自评
+      <select id="rating-${d}">
+        <option value="low">低（不太确定）</option>
+        <option value="mid" selected>中（大概知道）</option>
+        <option value="high">高（比较熟）</option>
+      </select>
+    </label>`).join("");
+}
+
+// ============================================================
+// Result rendering
+// ============================================================
+
+function renderResult(summary) {
+  document.querySelector("#metrics").innerHTML = `
+    <div class="metric">题目数<strong>${summary.total}</strong></div>
+    <div class="metric">成功调出<strong>${summary.l0_count}</strong></div>
+    <div class="metric">知识缺口<strong>${summary.knowledge_gap_count}</strong></div>`;
+  document.querySelector("#attempts").innerHTML = summary.attempts.map(renderAttempt).join("");
+}
+
+function renderAttempt(a) {
+  const st = a.recall_level === "L0" ? "✅ 成功调出"
+    : a.recall_level === "recall_failure" ? "🔄 调取困难" : "❌ 知识缺口";
+  const ref = a.recall_level === "knowledge_gap"
+    ? `<p class="standard-answer">${fmtRef(a)}</p>` : "";
+  const rt = a.retest_question
+    ? `<p class="transition">→ 变式重测：${a.retest_question}</p>` : "";
+  return `<div class="attempt"><strong>${a.topic}</strong>
+    <p>${a.original_question}</p><p>${st}</p>${rt}${ref}</div>`;
+}
+
+function fmtRef(a) {
+  if (a.reference_answer && Array.isArray(a.key_points)) {
+    const pts = a.key_points.map((p) => `• ${p}`).join("\n");
+    return `${a.reference_answer}\n\n关键点：\n${pts}`;
   }
+  return a.standard_answer || "已记录为知识缺口。";
 }
 
-function stopTTS() {
-  const audio = document.querySelector("#tts-audio");
-  audio.pause();
-  audio.currentTime = 0;
-  document.querySelector("#tts-play").classList.remove("hidden");
-  document.querySelector("#tts-stop").classList.add("hidden");
-}
-
-async function loadTTSAudio(text) {
-  if (!voiceState.ttsConfigured || !text) return;
-  try {
-    const result = await api("/api/tts", { text });
-    if (result && result.audio_base64) {
-      const audio = document.querySelector("#tts-audio");
-      audio.src = `data:audio/${result.format || "mp3"};base64,${result.audio_base64}`;
-      currentTTSText = text;
-      const autoPlay = document.querySelector("#tts-auto");
-      if (autoPlay && autoPlay.checked) audio.play().catch(() => {});
-    }
-  } catch (e) { /* TTS failure is non-fatal */ }
-}
-
+// Init
 renderRatings();
