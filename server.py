@@ -107,7 +107,13 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _send_static(self, request_path: str) -> None:
-        relative = "index.html" if request_path in {"", "/"} else request_path.lstrip("/")
+        normalized = request_path.strip()
+        if normalized in {"", "/"}:
+            relative = "index.html"
+        else:
+            relative = normalized.lstrip("/")
+            if relative.startswith("static/"):
+                relative = relative[len("static/") :]
         file_path = (STATIC_DIR / relative).resolve()
         if not str(file_path).startswith(str(STATIC_DIR.resolve())) or not file_path.exists():
             self.send_error(404)

@@ -1,12 +1,17 @@
 :root {
-  --bg: #f6f7f9;
-  --text: #18202a;
-  --muted: #5d6a78;
-  --line: #d9e0e7;
-  --primary: #126b5d;
-  --primary-dark: #0d4e45;
-  --accent: #b84832;
-  --panel: #ffffff;
+  --bg: #07111f;
+  --bg-2: #0d1d2f;
+  --panel: rgba(17, 27, 43, 0.72);
+  --panel-strong: rgba(10, 18, 29, 0.88);
+  --text: #ecf4ff;
+  --muted: #9bb5cf;
+  --line: rgba(143, 181, 218, 0.18);
+  --primary: #7ef7d3;
+  --primary-strong: #4fe0af;
+  --primary-dark: #1ab88c;
+  --accent: #ffc974;
+  --accent-strong: #ff9e42;
+  --shadow: rgba(12, 17, 30, 0.42);
 }
 
 * {
@@ -15,23 +20,41 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(111, 241, 202, 0.18), transparent 28%),
+    radial-gradient(circle at top right, rgba(255, 158, 66, 0.18), transparent 24%),
+    linear-gradient(135deg, var(--bg) 0%, var(--bg-2) 38%, #0a1623 100%);
   color: var(--text);
   font-family: Arial, "Microsoft YaHei", sans-serif;
   letter-spacing: 0;
 }
 
 .shell {
-  width: min(960px, calc(100vw - 32px));
+  width: min(1060px, calc(100vw - 32px));
   margin: 32px auto;
 }
 
 .panel {
+  position: relative;
+  overflow: hidden;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 30px;
   padding: 28px;
-  box-shadow: 0 10px 30px rgba(24, 32, 42, 0.06);
+  box-shadow: 0 30px 70px var(--shadow);
+  backdrop-filter: blur(12px);
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: -40% auto auto -18%;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(126, 247, 211, 0.2), rgba(126, 247, 211, 0));
+  pointer-events: none;
 }
 
 .hidden {
@@ -42,16 +65,21 @@ body {
   margin: 0 0 10px;
   color: var(--primary);
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 12px;
 }
 
 h1,
 h2 {
   margin: 0 0 14px;
-  line-height: 1.2;
+  line-height: 1.06;
 }
 
 h1 {
-  font-size: 38px;
+  font-size: clamp(42px, 5vw, 88px);
+  letter-spacing: -0.06em;
+  max-width: 760px;
 }
 
 h2 {
@@ -59,16 +87,68 @@ h2 {
 }
 
 .lead {
-  max-width: 720px;
-  color: var(--muted);
-  font-size: 18px;
+  max-width: 760px;
+  color: rgba(236, 244, 255, 0.82);
+  font-size: clamp(18px, 2vw, 24px);
   line-height: 1.7;
+  margin: 18px 0 0;
+}
+
+.landing-panel {
+  min-height: 620px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(28px, 4vw, 56px);
+  background:
+    linear-gradient(135deg, rgba(9, 18, 29, 0.92), rgba(20, 29, 45, 0.76)),
+    radial-gradient(circle at right top, rgba(255, 201, 116, 0.12), transparent 18%);
+}
+
+.landing-hero {
+  position: relative;
+  z-index: 1;
+  max-width: 820px;
+  padding-top: 8px;
+}
+
+.hero-hint {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 20px;
+  padding: 10px 16px;
+  border: 1px solid rgba(126, 247, 211, 0.45);
+  border-radius: 999px;
+  color: var(--primary);
+  background: rgba(126, 247, 211, 0.08);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .setup-grid {
+  position: relative;
+  z-index: 1;
   display: grid;
   gap: 18px;
-  margin-top: 24px;
+  margin-top: 18px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transform: translateY(28px);
+  transition: max-height 0.6s ease, opacity 0.35s ease, transform 0.35s ease, margin-top 0.35s ease;
+  pointer-events: none;
+}
+
+.landing-panel.revealed .setup-grid {
+  opacity: 1;
+  max-height: 1200px;
+  transform: translateY(0);
+  pointer-events: auto;
+  margin-top: 30px;
 }
 
 label,
@@ -82,9 +162,11 @@ textarea {
   width: 100%;
   margin-top: 8px;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 12px;
+  border-radius: 14px;
+  padding: 14px 16px;
   color: var(--text);
+  background: rgba(6, 13, 22, 0.38);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   font: inherit;
 }
 
@@ -93,8 +175,9 @@ fieldset {
   gap: 10px;
   margin: 0;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 18px;
   padding: 16px;
+  background: rgba(8, 16, 28, 0.3);
 }
 
 .check {
@@ -102,6 +185,11 @@ fieldset {
   gap: 8px;
   align-items: center;
   font-weight: 400;
+  color: rgba(236, 244, 255, 0.9);
+}
+
+.check input {
+  accent-color: var(--primary-strong);
 }
 
 .ratings {

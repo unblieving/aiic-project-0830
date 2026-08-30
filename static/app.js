@@ -44,11 +44,19 @@ const domainNames = {
 })();
 
 // Setup form
+const setupSection = document.querySelector("#setup");
+const setupForm = document.querySelector("#setup-form");
+
+setupSection.addEventListener("click", (event) => {
+  if (event.target.closest("button, select, input, textarea, label, fieldset")) return;
+  setupSection.classList.add("revealed");
+});
+
 document.querySelectorAll("input[name='domain']").forEach((el) => {
   el.addEventListener("change", renderRatings);
 });
 
-document.querySelector("#setup-form").addEventListener("submit", async (event) => {
+setupForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const btn = event.submitter || document.querySelector("#setup-form button[type='submit']");
   const domains = selectedDomains();
