@@ -47,6 +47,13 @@ $env:PORT="8080"
 python server.py
 ```
 
+## Tests
+
+```powershell
+cd C:\Users\Lenovo\aiic-project-0830
+python -m unittest discover -s tests -v
+```
+
 ## Environment Variables
 
 - `DEEPSEEK_API_KEY`: DeepSeek API key. If absent, the app uses deterministic
