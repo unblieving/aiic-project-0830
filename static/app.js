@@ -5,8 +5,9 @@
 const state = { sessionId: null, lastPayload: null, mode: null };
 
 const voice = {
-  asrConfigured: false, ttsConfigured: false, wsPort: 8082, wsUrl: "",
-  ws: null, audioContext: null, mediaStream: null,
+  asrConfigured: false, ttsConfigured: false, asrMode: "one_sentence",
+  mediaRecorder: null, audioChunks: [], recorderMimeType: "",
+  audioContext: null, mediaStream: null,
   scriptProcessor: null, analyser: null,
   isRecording: false, recordingStartTime: 0, firstSpeechTime: 0,
   maxPauseMs: 0, currentPauseStart: 0, isSpeaking: false,
@@ -34,8 +35,7 @@ const domainNames = {
     if (s && !s.error) {
       voice.asrConfigured = s.asr_configured;
       voice.ttsConfigured = s.tts_configured;
-      voice.wsPort = s.ws_port || 8082;
-      voice.wsUrl = s.ws_url || "";
+      voice.asrMode = s.asr_mode || "one_sentence";
     }
   } catch (e) { /* ok */ }
 })();
@@ -127,7 +127,13 @@ document.querySelector("#voice-recovered").addEventListener("click", async () =>
     sessionId: state.sessionId, answer: voice.finalTranscript, recovered: true,
   }));
 });
-document.querySelector("#voice-submit").addEventListener("click", () => submitVoiceAnswer());
+document.querySelector("#voice-submit").addEventListener("click", () => {
+  if (voice.turnState === "USER_READY") {
+    startVoiceRecording();
+    return;
+  }
+  if (voice.turnState === "USER_SPEAKING") submitVoiceAnswer();
+});
 document.querySelector("#voice-show-result").addEventListener("click", () => showResult());
 document.querySelector("#voice-mute").addEventListener("click", () => {
   voice.isMuted = !voice.isMuted;
@@ -136,7 +142,6 @@ document.querySelector("#voice-mute").addEventListener("click", () => {
     const current = activeTts;
     cancelTts(current.id, current.audio, current.objectUrl);
     setTurnState("USER_READY");
-    startVoiceRecording();
   }
 });
 document.querySelector("#restart").addEventListener("click", () => window.location.reload());
@@ -147,12 +152,13 @@ function setTurnState(s) {
   const ind = document.querySelector("#mic-indicator");
   const lbl = document.querySelector("#mic-label");
   const promptStatus = document.querySelector("#voice-prompt-status");
+  const submit = document.querySelector("#voice-submit");
   if (!ind || !lbl) return;
   ind.className = "mic-indicator";
-  if (s === "AI_SPEAKING") { ind.classList.add("speaking"); lbl.textContent = "AI 正在说话…"; if (promptStatus) promptStatus.textContent = "面试官正在提问..."; }
-  else if (s === "USER_READY") { lbl.textContent = "请开始回答"; if (promptStatus) promptStatus.textContent = "请开始回答"; }
-  else if (s === "USER_SPEAKING") { ind.classList.add("listening"); lbl.textContent = "正在聆听…"; }
-  else if (s === "PROCESSING") { ind.classList.add("processing"); lbl.textContent = "处理中…"; }
+  if (s === "AI_SPEAKING") { ind.classList.add("speaking"); lbl.textContent = "AI 正在说话…"; if (promptStatus) promptStatus.textContent = "面试官正在提问..."; if (submit) submit.textContent = "开始回答"; }
+  else if (s === "USER_READY") { lbl.textContent = "请开始回答"; if (promptStatus) promptStatus.textContent = "请开始回答"; if (submit) submit.textContent = "开始回答"; }
+  else if (s === "USER_SPEAKING") { ind.classList.add("listening"); lbl.textContent = "正在录音"; if (submit) submit.textContent = "回答完成"; }
+  else if (s === "PROCESSING") { ind.classList.add("processing"); lbl.textContent = "处理中…"; if (submit) submit.textContent = "处理中..."; }
   else { lbl.textContent = ""; }
   setVoiceControlsDisabled(s === "AI_SPEAKING");
 }
@@ -256,7 +262,6 @@ async function playTTSAndThenListen(text, promptId) {
   const completed = await speakText(text, promptId);
   if (!completed || lastSpokenPromptId !== promptId) return;
   setTurnState("USER_READY");
-  startVoiceRecording();
 }
 
 async function speakText(text, promptId) {
@@ -428,124 +433,123 @@ function promptIdFor(payload, kind, text) {
 }
 
 // ============================================================
-// Voice Recording (Volcengine ASR via WebSocket proxy)
+// Voice Recording (MediaRecorder -> /api/asr)
 // ============================================================
 
 function startVoiceRecording() {
   if (voice.isRecording || voice.turnState === "AI_SPEAKING") return;
+  console.log("[REC] start");
   setTurnState("USER_SPEAKING");
-  navigator.mediaDevices.getUserMedia({
-    audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true }
-  }).then((stream) => {
+  voice.audioChunks = [];
+  voice.recorderMimeType = "";
+  navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+    console.log("[REC] permission ok");
     voice.mediaStream = stream;
-    const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-    voice.audioContext = ctx;
-    const src = ctx.createMediaStreamSource(stream);
-    const an = ctx.createAnalyser(); an.fftSize = 256;
-    voice.analyser = an; src.connect(an);
-    const proc = ctx.createScriptProcessor(4096, 1, 1);
-    voice.scriptProcessor = proc; an.connect(proc); proc.connect(ctx.destination);
-    const wsUrl = getAsrWebSocketUrl();
-    console.log("[ASR] websocket url=", wsUrl);
-    console.log("[ASR] connecting");
-    const ws = new WebSocket(wsUrl);
-    voice.ws = ws;
-    ws.onopen = () => {
-      console.log("[ASR] open");
-      ws.send(JSON.stringify({ type: "start" }));
+
+    const mimeType = supportedRecorderMimeType();
+    const options = mimeType ? { mimeType } : {};
+    const mediaRecorder = new MediaRecorder(stream, options);
+    voice.mediaRecorder = mediaRecorder;
+    voice.recorderMimeType = mediaRecorder.mimeType || mimeType || "audio/webm";
+    console.log("[REC] mimeType=", voice.recorderMimeType);
+
+    mediaRecorder.ondataavailable = (event) => {
+      console.log("[REC] chunk bytes=", event.data ? event.data.size : 0);
+      if (event.data && event.data.size > 0) voice.audioChunks.push(event.data);
     };
-    ws.onmessage = (ev) => {
-      const msg = JSON.parse(ev.data);
-      if (msg.type === "transcript") handleTranscript(msg);
-      else if (msg.type === "error") {
-        const ve = document.querySelector("#voice-error");
-        if (ve) ve.textContent = `语音识别错误: ${msg.message}`;
-      }
+    mediaRecorder.onerror = (event) => {
+      console.error("[REC] recorder error", event.error || event);
+      showVoiceError(`录音失败：${(event.error && event.error.message) || "MediaRecorder error"}`);
     };
-    ws.onerror = (event) => {
-      console.log("[ASR] error", event);
-      const ve = document.querySelector("#voice-error");
-      if (ve) ve.textContent = "语音服务连接失败，请切换到文本模式。";
-      stopVoiceRecording();
-    };
-    ws.onclose = (event) => {
-      console.log("[ASR] close", event.code, event.reason);
-    };
+
+    setupVoiceSignalMeter(stream);
     voice.isRecording = true;
     voice.recordingStartTime = Date.now();
     voice.firstSpeechTime = 0; voice.maxPauseMs = 0;
     voice.currentPauseStart = 0; voice.isSpeaking = false;
-    proc.onaudioprocess = (e) => {
-      if (!voice.isRecording) return;
-      const d = e.inputBuffer.getChannelData(0);
-      let sum = 0;
-      for (let i = 0; i < d.length; i++) sum += d[i] * d[i];
-      const rms = Math.sqrt(sum / d.length);
-      const silent = rms < 0.01;
-      const now = Date.now();
-      if (!silent && !voice.isSpeaking) {
-        voice.isSpeaking = true;
-        if (voice.firstSpeechTime === 0) voice.firstSpeechTime = now;
-        if (voice.currentPauseStart > 0) {
-          const pd = now - voice.currentPauseStart;
-          if (pd > voice.maxPauseMs) voice.maxPauseMs = pd;
-          voice.currentPauseStart = 0;
-        }
-        resetSilenceTimer();
-      } else if (silent && voice.isSpeaking) {
-        voice.isSpeaking = false;
-        voice.currentPauseStart = now;
-        startSilenceTimer();
-      }
-      const pcm = new Int16Array(d.length);
-      for (let i = 0; i < d.length; i++) {
-        const s = Math.max(-1, Math.min(1, d[i]));
-        pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-      }
-      let bin = ""; const bytes = new Uint8Array(pcm.buffer);
-      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-      if (ws.readyState === WebSocket.OPEN)
-        ws.send(JSON.stringify({ type: "audio", audio: btoa(bin) }));
-    };
+    mediaRecorder.start(1000);
   }).catch((err) => {
-    const ve = document.querySelector("#voice-error");
-    if (ve) ve.textContent = `无法访问麦克风: ${err.message}`;
+    showVoiceError(`无法访问麦克风: ${err.message}`);
     setTurnState("IDLE");
   });
 }
 
-function getAsrWebSocketUrl() {
-  const configured = window.ASR_WS_URL || voice.wsUrl;
-  if (configured) return configured.replace(/^https:\/\//, "wss://").replace(/^http:\/\//, "ws://");
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.hostname}:${voice.wsPort}/ws/asr`;
+function supportedRecorderMimeType() {
+  const candidates = ["audio/webm;codecs=opus", "audio/webm"];
+  return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
 }
 
-function handleTranscript(msg) {
-  const ie = document.querySelector("#transcript-interim");
-  const fe = document.querySelector("#transcript-final");
-  if (msg.isFinal) {
-    voice.finalTranscript = msg.text;
-    if (fe) fe.textContent = msg.text;
-    if (ie) ie.textContent = "";
-  } else {
-    voice.partialTranscript = msg.text;
-    if (ie) ie.textContent = msg.text;
+function setupVoiceSignalMeter(stream) {
+  if (!window.AudioContext && !window.webkitAudioContext) return;
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  voice.audioContext = ctx;
+  const src = ctx.createMediaStreamSource(stream);
+  const an = ctx.createAnalyser(); an.fftSize = 256;
+  voice.analyser = an; src.connect(an);
+  const proc = ctx.createScriptProcessor(4096, 1, 1);
+  voice.scriptProcessor = proc; an.connect(proc); proc.connect(ctx.destination);
+  proc.onaudioprocess = (e) => {
+    if (!voice.isRecording) return;
+    const d = e.inputBuffer.getChannelData(0);
+    let sum = 0;
+    for (let i = 0; i < d.length; i++) sum += d[i] * d[i];
+    updateVoiceSignals(Math.sqrt(sum / d.length));
+  };
+}
+
+function updateVoiceSignals(rms) {
+  const silent = rms < 0.01;
+  const now = Date.now();
+  if (!silent && !voice.isSpeaking) {
+    voice.isSpeaking = true;
+    if (voice.firstSpeechTime === 0) voice.firstSpeechTime = now;
+    if (voice.currentPauseStart > 0) {
+      const pd = now - voice.currentPauseStart;
+      if (pd > voice.maxPauseMs) voice.maxPauseMs = pd;
+      voice.currentPauseStart = 0;
+    }
+  } else if (silent && voice.isSpeaking) {
+    voice.isSpeaking = false;
+    voice.currentPauseStart = now;
   }
-  resetSilenceTimer();
 }
 
 function stopVoiceRecording() {
   if (!voice.isRecording) return;
   clearSilenceTimer();
-  if (voice.ws && voice.ws.readyState === WebSocket.OPEN)
-    voice.ws.send(JSON.stringify({ type: "stop" }));
+  if (voice.mediaRecorder && voice.mediaRecorder.state !== "inactive") voice.mediaRecorder.stop();
+  cleanupRecordingResources();
+}
+
+function stopRecordingAndGetBlob() {
+  return new Promise((resolve, reject) => {
+    const recorder = voice.mediaRecorder;
+    if (!voice.isRecording || !recorder) {
+      resolve(new Blob([], { type: voice.recorderMimeType || "audio/webm" }));
+      return;
+    }
+    console.log("[REC] chunks=", voice.audioChunks.length);
+    recorder.onstop = () => {
+      const blob = new Blob(voice.audioChunks, { type: voice.recorderMimeType || recorder.mimeType || "audio/webm" });
+      console.log("[REC] final blob bytes=", blob.size, "type=", blob.type);
+      cleanupRecordingResources();
+      resolve(blob);
+    };
+    recorder.onerror = (event) => {
+      cleanupRecordingResources();
+      reject(event.error || new Error("MediaRecorder error"));
+    };
+    recorder.stop();
+  });
+}
+
+function cleanupRecordingResources() {
   if (voice.scriptProcessor) { voice.scriptProcessor.disconnect(); voice.scriptProcessor = null; }
   if (voice.analyser) { voice.analyser.disconnect(); voice.analyser = null; }
   if (voice.audioContext) { voice.audioContext.close().catch(() => {}); voice.audioContext = null; }
   if (voice.mediaStream) { voice.mediaStream.getTracks().forEach((t) => t.stop()); voice.mediaStream = null; }
+  voice.mediaRecorder = null;
   voice.isRecording = false;
-  setTimeout(() => { if (voice.ws) { voice.ws.close(); voice.ws = null; } }, 2000);
 }
 
 function resetVoiceTranscript() {
@@ -598,22 +602,74 @@ function clearSilenceTimer() {
 
 async function submitVoiceAnswer() {
   clearSilenceTimer();
-  stopVoiceRecording();
   setTurnState("PROCESSING");
-  const text = (voice.finalTranscript + " " + voice.partialTranscript).trim();
-  if (!text) {
-    const ve = document.querySelector("#voice-error");
-    if (ve) ve.textContent = "没有检测到语音，请重试。";
+  let blob;
+  try {
+    blob = await stopRecordingAndGetBlob();
+  } catch (err) {
+    console.error("[REC] stop error", err);
+    showVoiceError(`录音失败：${err.message || err}`);
     setTurnState("USER_READY");
-    startVoiceRecording();
     return;
   }
+  if (blob.size < 1000) {
+    showVoiceError("没有录到有效音频，请重试。");
+    setTurnState("USER_READY");
+    return;
+  }
+
+  let text = "";
+  try {
+    text = await uploadAudioForTranscript(blob);
+  } catch (err) {
+    console.error("[ASR CLIENT] error", err);
+    showVoiceError(`语音识别失败：${err.message}`);
+    setTurnState("USER_READY");
+    return;
+  }
+  if (!text) {
+    showVoiceError("没有检测到语音，请重试。");
+    setTurnState("USER_READY");
+    return;
+  }
+  voice.finalTranscript = text;
+  voice.partialTranscript = "";
+  const fe = document.querySelector("#transcript-final");
+  const ie = document.querySelector("#transcript-interim");
+  if (fe) fe.textContent = `我说：${text}`;
+  if (ie) ie.textContent = "";
+
   const vs = getVoiceSignals();
   const payload = await api("/api/answer", {
     sessionId: state.sessionId, answer: text,
     inputMode: "voice", voiceSignals: vs,
   });
   showTraining(payload);
+}
+
+async function uploadAudioForTranscript(blob) {
+  console.log("[ASR CLIENT] upload bytes=", blob.size, "type=", blob.type);
+  const response = await fetch("/api/asr", {
+    method: "POST",
+    headers: { "Content-Type": blob.type || "audio/webm" },
+    body: blob,
+  });
+  console.log("[ASR CLIENT] status=", response.status);
+  const raw = await response.text();
+  console.log("[ASR CLIENT] raw response=", raw);
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`ASR returned non-JSON response: ${raw.slice(0, 160)}`);
+  }
+  if (!response.ok || data.ok === false) throw new Error(data.error || `HTTP ${response.status}`);
+  return (data.transcript || "").trim();
+}
+
+function showVoiceError(message) {
+  const ve = document.querySelector("#voice-error");
+  if (ve) ve.textContent = message;
 }
 
 function getVoiceSignals() {

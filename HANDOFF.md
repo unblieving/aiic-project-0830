@@ -166,7 +166,7 @@ OK
 ## 启动
 
 ```bash
-$env:VOLCENGINE_API_KEY='ce4be9a9-ef4e-4705-9ebf-ca121228522e'
+$env:VOLCENGINE_API_KEY='your_volcengine_api_key'
 $env:PORT='8080'
 python server.py
 ```

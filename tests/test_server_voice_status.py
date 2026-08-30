@@ -10,7 +10,7 @@ from server import Handler
 
 
 class ServerVoiceStatusTests(unittest.TestCase):
-    def test_voice_status_returns_public_wss_url_from_https_tunnel(self):
+    def test_voice_status_uses_one_sentence_asr_mode_without_ws_fields(self):
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -28,7 +28,9 @@ class ServerVoiceStatusTests(unittest.TestCase):
 
         self.assertEqual(response.status, 200)
         self.assertTrue(body["asr_configured"])
-        self.assertEqual(body["ws_url"], "wss://commitments-improvements-portland-heating.trycloudflare.com")
+        self.assertEqual(body["asr_mode"], "one_sentence")
+        self.assertNotIn("ws_url", body)
+        self.assertNotIn("ws_port", body)
 
 
 if __name__ == "__main__":

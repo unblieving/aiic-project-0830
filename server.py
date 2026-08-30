@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from recall_trainer.api import ApiApp
-from recall_trainer.volcengine_asr import is_asr_configured, get_ws_port
+from recall_trainer.volcengine_one_sentence_asr import is_asr_configured
 from recall_trainer.tts import is_tts_configured
 
 
@@ -25,8 +25,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({
                 "asr_configured": is_asr_configured(),
                 "tts_configured": is_tts_configured(),
-                "ws_port": get_ws_port(),
-                "ws_url": _public_asr_ws_url(),
+                "asr_mode": "one_sentence",
             })
             return
         if parsed.path.startswith("/api/"):
@@ -36,14 +35,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
-        raw_body = self.rfile.read(length) if length else b"{}"
+        raw_body = self.rfile.read(length) if length else b""
+        parsed_path = urlparse(self.path).path
+
+        if parsed_path == "/api/asr":
+            self._handle_asr(raw_body)
+            return
+
+        if not raw_body:
+            raw_body = b"{}"
         try:
             payload = json.loads(raw_body.decode("utf-8"))
         except json.JSONDecodeError:
             self._send_json({"error": "Invalid JSON."}, status=400)
             return
-        
-        parsed_path = urlparse(self.path).path
         
         # Handle TTS endpoint
         if parsed_path == "/api/tts":
@@ -52,6 +57,22 @@ class Handler(BaseHTTPRequestHandler):
         
         response = APP.handle("POST", parsed_path, payload)
         self._send_json(response, status=400 if "error" in response else 200)
+
+    def _handle_asr(self, audio_body: bytes) -> None:
+        content_type = self.headers.get("Content-Type", "")
+        print(f"[ASR SERVER] request content_type={content_type}")
+        print(f"[ASR SERVER] content_length={self.headers.get('Content-Length')}")
+        print(f"[ASR SERVER] received bytes={len(audio_body)}")
+        if not audio_body:
+            self._send_json({"ok": False, "error": "empty audio body"}, status=400)
+            return
+        try:
+            from recall_trainer.volcengine_one_sentence_asr import recognize_audio
+
+            transcript = recognize_audio(audio_body, content_type)
+            self._send_json({"ok": True, "transcript": transcript})
+        except Exception as exc:
+            self._send_json({"ok": False, "error": str(exc)}, status=500)
     
     def _handle_tts(self, payload: dict) -> None:
         text = payload.get("text", "")
@@ -104,31 +125,13 @@ def main() -> None:
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "80"))
 
-    # Start WebSocket ASR server in background thread
-    ws_port = get_ws_port()
-    try:
-        from recall_trainer.ws_handler import start_ws_server
-        start_ws_server(ws_port)
-    except Exception as exc:
-        print(f"Warning: WebSocket ASR server failed to start: {exc}")
-
     server = ThreadingHTTPServer((host, port), Handler)
     print(f"Serving recall trainer on http://{host}:{port}")
     if is_asr_configured():
-        public_ws_url = _public_asr_ws_url() or f"ws://{host}:{ws_port}/ws/asr"
-        print(f"Voice ASR WebSocket on {public_ws_url}")
+        print("Voice ASR mode: one_sentence")
     else:
         print("Voice ASR not configured (set VOLCENGINE_API_KEY to enable)")
     server.serve_forever()
-
-
-def _public_asr_ws_url() -> str:
-    value = os.getenv("ASR_PUBLIC_WS_URL", "").strip()
-    if value.startswith("https://"):
-        return "wss://" + value[len("https://"):]
-    if value.startswith("http://"):
-        return "ws://" + value[len("http://"):]
-    return value
 
 
 if __name__ == "__main__":
