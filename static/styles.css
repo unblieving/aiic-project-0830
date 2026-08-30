@@ -243,13 +243,13 @@ fieldset {
 
 .coach {
   margin: 16px 0;
-  border-left: 5px solid #d97706;
-  background: linear-gradient(180deg, #fffaf3 0%, #fff1d6 100%);
-  color: #1f2937;
+  border-left: 5px solid #5ec59d;
+  background: linear-gradient(180deg, #eefaf5 0%, #e7f3ee 100%);
+  color: #1b2b25;
   padding: 14px 16px;
   line-height: 1.7;
   border-radius: 12px;
-  box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(94, 197, 157, 0.12);
   font-weight: 600;
 }
 
@@ -306,19 +306,19 @@ button.secondary:hover {
 
 .metric,
 .attempt {
-  border: 1px solid rgba(204, 140, 40, 0.6);
+  border: 1px solid rgba(94, 197, 157, 0.4);
   border-radius: 14px;
   padding: 16px;
-  background: linear-gradient(180deg, #fffdf7 0%, #fff5d9 100%);
+  background: linear-gradient(180deg, #f6fbf9 0%, #edf7f2 100%);
   color: var(--text-strong);
-  box-shadow: 0 10px 24px rgba(120, 85, 20, 0.08);
+  box-shadow: 0 10px 24px rgba(22, 53, 42, 0.08);
 }
 
 .metric strong {
   display: block;
   font-size: 28px;
   margin-top: 6px;
-  color: #7a4300;
+  color: #234d3d;
 }
 
 .attempts {
@@ -338,23 +338,23 @@ button.secondary:hover {
   margin: 4px 0 8px;
   padding: 5px 10px;
   border-radius: 999px;
-  background: #fff0d6;
-  color: #7a4300;
+  background: #edf7f1;
+  color: #245742;
   font-weight: 800;
-  border: 1px solid rgba(171, 104, 20, 0.18);
+  border: 1px solid rgba(94, 197, 157, 0.2);
 }
 
 .standard-answer {
   white-space: pre-wrap;
   margin: 0;
-  border-left: 4px solid #d97706;
-  background: linear-gradient(180deg, #fffaf0 0%, #fff2d9 100%);
+  border-left: 4px solid #5ec59d;
+  background: linear-gradient(180deg, #f4fbf7 0%, #edf7f2 100%);
   padding: 14px 16px;
   border-radius: 10px;
-  color: #21170d;
+  color: #1b2b25;
   font: inherit;
   line-height: 1.7;
-  box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(94, 197, 157, 0.08);
 }
 
 /* Mode selection cards */
