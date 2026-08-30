@@ -82,9 +82,15 @@ h2 {
 }
 
 h1 {
-  font-size: clamp(42px, 5vw, 88px);
+  font-size: clamp(42px, 4vw, 72px);
   letter-spacing: -0.06em;
   max-width: 760px;
+  background: linear-gradient(135deg, #f7fbff 0%, #b6ffe7 22%, #7ef7d3 55%, #ffc974 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 18px rgba(126, 247, 211, 0.18);
+  animation: titleGlow 3.4s ease-in-out infinite alternate;
 }
 
 h2 {
@@ -296,16 +302,19 @@ button.secondary:hover {
 
 .metric,
 .attempt {
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border: 1px solid rgba(204, 140, 40, 0.6);
+  border-radius: 14px;
   padding: 16px;
-  background: #fbfcfd;
+  background: linear-gradient(180deg, #fffdf7 0%, #fff5d9 100%);
+  color: var(--text-strong);
+  box-shadow: 0 10px 24px rgba(120, 85, 20, 0.08);
 }
 
 .metric strong {
   display: block;
   font-size: 28px;
   margin-top: 6px;
+  color: #7a4300;
 }
 
 .attempts {
@@ -323,23 +332,25 @@ button.secondary:hover {
 .gap-label {
   display: inline-flex;
   margin: 4px 0 8px;
-  padding: 4px 8px;
+  padding: 5px 10px;
   border-radius: 999px;
   background: #fff0d6;
-  color: #8a5200;
+  color: #7a4300;
   font-weight: 800;
+  border: 1px solid rgba(171, 104, 20, 0.18);
 }
 
 .standard-answer {
   white-space: pre-wrap;
   margin: 0;
-  border-left: 4px solid #d98a1f;
-  background: #fffaf0;
-  padding: 12px;
-  border-radius: 6px;
-  color: var(--text);
+  border-left: 4px solid #d97706;
+  background: linear-gradient(180deg, #fffaf0 0%, #fff2d9 100%);
+  padding: 14px 16px;
+  border-radius: 10px;
+  color: #21170d;
   font: inherit;
-  line-height: 1.6;
+  line-height: 1.7;
+  box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.08);
 }
 
 /* Mode selection cards */
@@ -396,19 +407,20 @@ button.secondary:hover {
   gap: 10px;
   margin: 12px 0 18px;
   padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f8fafb;
+  border: 1px solid rgba(126, 247, 211, 0.5);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(14, 24, 38, 0.9), rgba(10, 18, 29, 0.9));
+  box-shadow: inset 0 0 0 1px rgba(126, 247, 211, 0.08);
 }
 
 .voice-question-count {
-  color: var(--muted);
+  color: #d7e7f7;
   font-size: 14px;
   font-weight: 700;
 }
 
 .voice-prompt-status {
-  color: var(--text);
+  color: #f4fbff;
   font-size: 20px;
   font-weight: 800;
 }
@@ -445,6 +457,15 @@ button.secondary:hover {
   to { transform: rotate(360deg); }
 }
 
+@keyframes titleGlow {
+  0% {
+    filter: drop-shadow(0 0 8px rgba(126, 247, 211, 0.2));
+  }
+  100% {
+    filter: drop-shadow(0 0 22px rgba(255, 201, 116, 0.28));
+  }
+}
+
 .mic-label {
   font-size: 15px;
   color: var(--muted);
@@ -454,26 +475,27 @@ button.secondary:hover {
 .voice-transcript {
   margin: 8px 0;
   padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f8fafb;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(240, 247, 255, 0.96));
   min-height: 80px;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.08);
 }
 
 .transcript-interim {
-  color: var(--muted);
+  color: #475569;
   line-height: 1.7;
   font-size: 15px;
 }
 
 .transcript-final {
-  color: var(--text);
-  font-weight: 600;
+  color: #0f172a;
+  font-weight: 700;
   line-height: 1.7;
   font-size: 16px;
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid rgba(148, 163, 184, 0.35);
 }
 
 .transcript-final:empty {
