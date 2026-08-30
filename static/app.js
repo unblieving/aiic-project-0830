@@ -11,11 +11,15 @@ const voice = {
   isRecording: false, recordingStartTime: 0, firstSpeechTime: 0,
   maxPauseMs: 0, currentPauseStart: 0, isSpeaking: false,
   finalTranscript: "", partialTranscript: "",
-  turnState: "IDLE", isMuted: false, ttsAudio: null, _ttsOnEnd: null,
+  turnState: "IDLE", isMuted: false,
   currentPromptText: "", currentPromptKind: "question",
   silenceTimer: null, silenceStart: 0, silenceBarInterval: null,
   autoSubmitDelay: 3500,
 };
+
+let activeTts = null;
+let ttsGeneration = 0;
+let lastSpokenPromptId = null;
 
 const domainNames = {
   network: "计算机网络", os: "操作系统", db: "数据库",
@@ -124,15 +128,15 @@ document.querySelector("#voice-recovered").addEventListener("click", async () =>
 });
 document.querySelector("#voice-submit").addEventListener("click", () => submitVoiceAnswer());
 document.querySelector("#voice-show-result").addEventListener("click", () => showResult());
-document.querySelector("#voice-replay").addEventListener("click", () => {
-  if (!voice.currentPromptText) return;
-  stopVoiceRecording();
-  playTTSAndThenListen(voice.currentPromptText);
-});
 document.querySelector("#voice-mute").addEventListener("click", () => {
   voice.isMuted = !voice.isMuted;
   document.querySelector("#voice-mute").textContent = voice.isMuted ? "🔊 开启朗读" : "🔇 静音朗读";
-  if (voice.isMuted && voice.ttsAudio) { voice.ttsAudio.pause(); voice.ttsAudio.currentTime = 0; onTTSEnd(); }
+  if (voice.isMuted && activeTts) {
+    const current = activeTts;
+    cleanupTts(current.id, current.audio, current.objectUrl);
+    setTurnState("USER_READY");
+    startVoiceRecording();
+  }
 });
 document.querySelector("#restart").addEventListener("click", () => window.location.reload());
 
@@ -182,7 +186,7 @@ function showTraining(payload) {
       document.querySelector("#answer").focus();
     } else {
       resetVoiceTranscript();
-      presentVoicePrompt(payload.current.question, "question");
+      presentVoicePrompt(payload.current.question, "question", promptIdFor(payload, "question"));
     }
   }
 
@@ -193,7 +197,7 @@ function showTraining(payload) {
     show("voice-recovered"); show("voice-more-scaffold");
     if (state.mode === "voice") {
       resetVoiceTranscript();
-      presentVoicePrompt(payload.scaffold || "", "scaffold");
+      presentVoicePrompt(payload.scaffold || "", "scaffold", promptIdFor(payload, "scaffold", payload.scaffold || ""));
     }
   }
 
@@ -201,7 +205,7 @@ function showTraining(payload) {
     const txt = payload.scaffold || "好，现在不看刚才的提示，重新完整回答一次最开始的问题。";
     coachEl.textContent = txt;
     if (state.mode === "text") coachEl.classList.remove("hidden");
-    if (state.mode === "voice") { resetVoiceTranscript(); presentVoicePrompt(txt, "scaffold"); }
+    if (state.mode === "voice") { resetVoiceTranscript(); presentVoicePrompt(txt, "scaffold", promptIdFor(payload, "reanswer", txt)); }
   }
 
   if (payload.status === "RETEST") {
@@ -211,7 +215,7 @@ function showTraining(payload) {
       document.querySelector("#answer").focus();
     } else {
       resetVoiceTranscript();
-      presentVoicePrompt(payload.current.question, "question");
+      presentVoicePrompt(payload.current.question, "question", promptIdFor(payload, "retest"));
     }
   }
 
@@ -219,7 +223,7 @@ function showTraining(payload) {
     show("show-result"); show("voice-show-result");
     if (state.mode === "voice") {
       stopVoiceRecording(); setTurnState("IDLE");
-      playTTSText("本轮训练完成！点击查看结果。");
+      speakText("本轮训练完成！点击查看结果。", "done");
     }
   }
 
@@ -239,7 +243,7 @@ async function showResult() {
 // TTS: play text, then start listening
 // ============================================================
 
-function playTTSAndThenListen(text) {
+async function playTTSAndThenListen(text, promptId) {
   if (voice.isMuted || !voice.ttsConfigured) {
     showVoiceTextFallback("语音播放失败，已切换为文字显示");
     setTurnState("USER_READY");
@@ -248,25 +252,27 @@ function playTTSAndThenListen(text) {
   }
   stopVoiceRecording();
   setTurnState("AI_SPEAKING");
-  playTTSText(text, () => {
-    setTurnState("USER_READY");
-    startVoiceRecording();
-  });
+  const completed = await speakText(text, promptId);
+  if (!completed || lastSpokenPromptId !== promptId) return;
+  setTurnState("USER_READY");
+  startVoiceRecording();
 }
 
-function playTTSText(text, onEnd) {
-  if (!text) { if (onEnd) onEnd(); return; }
-  if (voice.ttsAudio) { voice.ttsAudio.pause(); voice.ttsAudio = null; }
-  voice._ttsOnEnd = onEnd || null;
-  console.log("[TTS FRONTEND] requesting:", text);
-  fetch("/api/tts", {
+async function speakText(text, promptId) {
+  if (!text) return true;
+  const id = ++ttsGeneration;
+  const old = activeTts;
+  if (old) cleanupTts(old.id, old.audio, old.objectUrl);
+
+  console.log(`[TTS #${id}] request textLength=${text.length}`);
+  try {
+    const response = await fetch("/api/tts", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
-  }).then(async (response) => {
+    });
     const contentType = response.headers.get("content-type") || "";
-    console.log("[TTS FRONTEND] status:", response.status);
-    console.log("[TTS FRONTEND] content-type:", contentType);
+    console.log(`[TTS #${id}] response status=${response.status} content-type=${contentType}`);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     let blob;
@@ -278,34 +284,69 @@ function playTTSText(text, onEnd) {
       blob = base64ToAudioBlob(result.audio_base64, result.format || "mp3");
     }
 
-    console.log("[TTS FRONTEND] blob size:", blob.size);
+    console.log(`[TTS #${id}] blob size=${blob.size}`);
     if (!blob.size) throw new Error("empty audio blob");
-    return blob;
-  }).then((blob) => {
-      const audio = new Audio(URL.createObjectURL(blob));
-      voice.ttsAudio = audio;
-      audio.onended = () => { URL.revokeObjectURL(audio.src); onTTSEnd(); };
-      audio.onerror = () => { URL.revokeObjectURL(audio.src); handleTTSFailure("decode error"); };
-      console.log("[TTS FRONTEND] play start");
-      return audio.play().then(() => {
-        console.log("[TTS FRONTEND] play success");
-      }).catch((err) => {
-        console.log("[TTS FRONTEND] play failed", err);
-        throw err;
-      });
-  }).catch((err) => handleTTSFailure(err.message || String(err)));
+
+    if (id !== ttsGeneration) {
+      console.log(`[TTS #${id}] cancelled`);
+      return false;
+    }
+
+    const objectUrl = URL.createObjectURL(blob);
+    const audio = new Audio(objectUrl);
+    activeTts = { id, audio, objectUrl };
+    await waitForAudioReady(id, audio);
+    if (activeTts?.id !== id) {
+      console.log(`[TTS #${id}] cancelled`);
+      cleanupTts(id, audio, objectUrl);
+      return false;
+    }
+
+    console.log(`[TTS #${id}] duration=${Number.isFinite(audio.duration) ? audio.duration.toFixed(3) : "unknown"}`);
+    console.log(`[TTS #${id}] play start`);
+    await audio.play();
+    console.log(`[TTS #${id}] play success`);
+    await waitForAudioEnded(id, audio);
+    console.log(`[TTS #${id}] ended`);
+    cleanupTts(id, audio, objectUrl);
+    return true;
+  } catch (err) {
+    if (id !== ttsGeneration) {
+      console.log(`[TTS #${id}] cancelled`);
+      return false;
+    }
+    console.log(`[TTS #${id}] error`, err);
+    showVoiceTextFallback("语音播放失败，已切换为文字显示");
+    const current = activeTts;
+    if (current?.id === id) cleanupTts(id, current.audio, current.objectUrl);
+    return true;
+  }
 }
 
-function onTTSEnd() {
-  const cb = voice._ttsOnEnd;
-  voice._ttsOnEnd = null;
-  if (cb) cb();
+function waitForAudioReady(id, audio) {
+  return new Promise((resolve, reject) => {
+    if (audio.readyState >= 1) { resolve(); return; }
+    audio.onloadedmetadata = () => resolve();
+    audio.oncanplay = () => resolve();
+    audio.onerror = () => reject(new Error(`TTS #${id} audio metadata error`));
+  });
 }
 
-function handleTTSFailure(message) {
-  console.log("[TTS FRONTEND] play failed", message);
-  showVoiceTextFallback("语音播放失败，已切换为文字显示");
-  onTTSEnd();
+function waitForAudioEnded(id, audio) {
+  return new Promise((resolve, reject) => {
+    audio.onended = () => resolve();
+    audio.onpause = () => {
+      if (activeTts?.id !== id) resolve();
+    };
+    audio.onerror = () => reject(new Error(`TTS #${id} audio playback error`));
+  });
+}
+
+function cleanupTts(id, audio, objectUrl) {
+  if (activeTts?.id === id) activeTts = null;
+  try { audio.pause(); } catch {}
+  try { URL.revokeObjectURL(objectUrl); } catch {}
+  console.log(`[TTS #${id}] cleanup`);
 }
 
 function base64ToAudioBlob(base64, format) {
@@ -316,11 +357,13 @@ function base64ToAudioBlob(base64, format) {
   return new Blob([bytes], { type: mime });
 }
 
-function presentVoicePrompt(text, kind) {
+function presentVoicePrompt(text, kind, promptId) {
   voice.currentPromptText = text || "";
   voice.currentPromptKind = kind || "question";
   hideVoicePromptText();
-  playTTSAndThenListen(voice.currentPromptText);
+  if (promptId === lastSpokenPromptId) return;
+  lastSpokenPromptId = promptId;
+  playTTSAndThenListen(voice.currentPromptText, promptId);
 }
 
 function hideVoicePromptText() {
@@ -360,6 +403,18 @@ function setVoiceControlsDisabled(disabled) {
     const el = document.querySelector(`#${id}`);
     if (el) el.disabled = disabled;
   });
+}
+
+function promptIdFor(payload, kind, text) {
+  const base = [
+    payload.id || state.sessionId || "session",
+    payload.status,
+    payload.current?.topic || "",
+    payload.current?.question || "",
+    kind,
+    text || "",
+  ].join("|");
+  return base;
 }
 
 // ============================================================

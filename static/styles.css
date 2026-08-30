@@ -307,10 +307,6 @@ button.secondary:hover {
   font-weight: 800;
 }
 
-.voice-replay {
-  width: fit-content;
-}
-
 .voice-live {
   margin: 16px 0;
 }
