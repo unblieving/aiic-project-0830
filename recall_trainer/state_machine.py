@@ -45,6 +45,8 @@ class KnowledgeAttempt:
     retest_answer: str = ""
     verified: bool = False
     standard_answer: str = ""
+    reference_answer: str = ""
+    key_points: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -286,6 +288,10 @@ def answer_current_question(
 
     if session.status == TrainingStatus.REANSWER:
         attempt.first_answer = answer
+        if judged_level == RecallLevel.KNOWLEDGE_GAP:
+            attempt.first_recall_level = RecallLevel.KNOWLEDGE_GAP
+            _move_to_next_interleaving_question(session)
+            return session
         if attempt.first_recall_level is None:
             attempt.first_recall_level = session.current_hint_level
         _schedule_retest(session)
@@ -325,8 +331,19 @@ def get_result_summary(session: TrainingSession) -> dict[str, Any]:
                 "verified": attempt.verified,
                 "knowledge_gap": attempt.first_recall_level == RecallLevel.KNOWLEDGE_GAP,
                 "standard_answer": attempt.standard_answer,
+                "reference_answer": attempt.reference_answer,
+                "key_points": attempt.key_points,
+                "user_answer": attempt.first_answer,
             }
         )
+
+    improved_recall = sum(
+        1
+        for item in attempts
+        if item["first_recall_level"] not in {"L0", "Knowledge Gap"}
+        and item["retest_recall_level"] == "L0"
+    )
+    knowledge_gap_count = sum(1 for item in attempts if item["knowledge_gap"])
 
     return {
         "trained_topics": len(attempts),
@@ -336,14 +353,11 @@ def get_result_summary(session: TrainingSession) -> dict[str, Any]:
             for item in attempts
             if item["first_recall_level"] not in {"L0", "Knowledge Gap"}
         ),
-        "knowledge_gaps": sum(1 for item in attempts if item["knowledge_gap"]),
+        "knowledge_gaps": knowledge_gap_count,
+        "knowledgeGapCount": knowledge_gap_count,
         "verified_after_training": sum(1 for item in attempts if item["verified"]),
-        "improved_recall": sum(
-            1
-            for item in attempts
-            if item["first_recall_level"] not in {"L0", "Knowledge Gap"}
-            and item["retest_recall_level"] == "L0"
-        ),
+        "improved_recall": improved_recall,
+        "improvedRecallCount": improved_recall,
         "attempts": attempts,
     }
 

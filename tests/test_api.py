@@ -185,8 +185,11 @@ class ApiTests(unittest.TestCase):
             def judge_recall(self, question, answer):
                 return "knowledge_gap"
 
-            def generate_standard_answer(self, topic, question):
-                return "正确结论：用于确认双方收发能力。"
+            def generate_reference_answer(self, topic, question):
+                return {
+                    "reference_answer": "正确结论：用于确认双方收发能力。",
+                    "key_points": ["双方通信能力确认"],
+                }
 
         app = ApiApp(llm=FakeLlm())
         session = app.handle(
@@ -203,7 +206,9 @@ class ApiTests(unittest.TestCase):
 
         first = response["summary"]["attempts"][0]
         self.assertEqual(first["first_recall_level"], "Knowledge Gap")
-        self.assertEqual(first["standard_answer"], "正确结论：用于确认双方收发能力。")
+        self.assertIn("正确结论", first["standard_answer"])
+        self.assertEqual(first["reference_answer"], "正确结论：用于确认双方收发能力。")
+        self.assertEqual(first["key_points"], ["双方通信能力确认"])
         self.assertEqual(response["status"], "QUESTION")
 
     def test_recall_failure_answer_returns_l1_scaffold(self):
@@ -220,7 +225,7 @@ class ApiTests(unittest.TestCase):
             def judge_recall(self, question, answer):
                 return "recall_failure"
 
-            def generate_standard_answer(self, topic, question):
+            def generate_reference_answer(self, topic, question):
                 return "standard"
 
         app = ApiApp(llm=FakeLlm())
@@ -238,6 +243,48 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(response["status"], "SCAFFOLD_L1")
         self.assertEqual(response["scaffold"], "先说一个你最确定的点。")
+
+    def test_repeated_result_read_does_not_regenerate_reference_answer(self):
+        class FakeLlm:
+            def __init__(self):
+                self.reference_calls = 0
+
+            def generate_question(self, role, domain, rating):
+                return {"topic": "TCP 三次握手", "question": "TCP 为什么需要三次握手？"}
+
+            def generate_scaffold(self, level, question, answer):
+                return "scaffold"
+
+            def generate_retest(self, topic, question):
+                return "retest"
+
+            def judge_recall(self, question, answer):
+                return "knowledge_gap"
+
+            def generate_reference_answer(self, topic, question):
+                self.reference_calls += 1
+                return {
+                    "reference_answer": "三次握手确认双方通信能力。",
+                    "key_points": ["确认发送能力", "确认接收能力"],
+                }
+
+        llm = FakeLlm()
+        app = ApiApp(llm=llm)
+        session = app.handle(
+            "POST",
+            "/api/session",
+            {
+                "role": "backend",
+                "domains": ["network", "os"],
+                "selfRatings": {"network": "high", "os": "mid"},
+            },
+        )
+        app.handle("POST", "/api/answer", {"sessionId": session["id"], "answer": "TCP 是加密"})
+
+        app.handle("GET", f"/api/result?sessionId={session['id']}")
+        app.handle("GET", f"/api/result?sessionId={session['id']}")
+
+        self.assertEqual(llm.reference_calls, 1)
 
 
 if __name__ == "__main__":

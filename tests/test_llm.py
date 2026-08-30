@@ -60,6 +60,21 @@ class LlmTests(unittest.TestCase):
 
         self.assertEqual(result, "recall_failure")
 
+    def test_retrieval_failure_phrases_do_not_call_deepseek(self):
+        client = RecallCoachClient(api_key="test-key")
+        answers = [
+            "我不知道",
+            "这个我忘了",
+            "好像学过，但是现在想不起来",
+            "I don't know",
+        ]
+
+        with patch.object(client, "_call_deepseek") as call:
+            for answer in answers:
+                self.assertEqual(client.judge_recall("TCP 为什么需要三次握手？", answer), "recall_failure")
+
+        call.assert_not_called()
+
     def test_judges_substantive_answer_as_l0(self):
         client = RecallCoachClient(api_key="")
 
@@ -74,6 +89,13 @@ class LlmTests(unittest.TestCase):
 
         self.assertEqual(result, "knowledge_gap")
 
+    def test_judges_tcp_encryption_claim_as_knowledge_gap(self):
+        client = RecallCoachClient(api_key="")
+
+        result = client.judge_recall("TCP 为什么需要三次握手？", "TCP 三次握手是为了加密数据")
+
+        self.assertEqual(result, "knowledge_gap")
+
     def test_standard_answer_fallback_is_concise(self):
         client = RecallCoachClient(api_key="")
 
@@ -82,6 +104,16 @@ class LlmTests(unittest.TestCase):
         self.assertIn("正确结论", result)
         self.assertIn("关键知识点", result)
         self.assertLess(len(result), 220)
+
+    def test_reference_answer_fallback_returns_answer_and_key_points(self):
+        client = RecallCoachClient(api_key="")
+
+        result = client.generate_reference_answer("TCP 三次握手", "TCP 为什么需要三次握手？")
+
+        self.assertIn("reference_answer", result)
+        self.assertIn("key_points", result)
+        self.assertGreaterEqual(len(result["key_points"]), 2)
+        self.assertLessEqual(len(result["key_points"]), 4)
 
     def test_judge_accepts_deepseek_knowledge_gap(self):
         client = RecallCoachClient(api_key="test-key")

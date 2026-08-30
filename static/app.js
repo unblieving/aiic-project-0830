@@ -190,9 +190,9 @@ function showResult(summary) {
   metrics.replaceChildren(
     metricNode("训练知识点", summary.trained_topics),
     metricNode("首次独立提取", summary.independent_first),
-    metricNode("Improved Recall", summary.improved_recall),
+    metricNode("Improved Recall", summary.improvedRecallCount ?? summary.improved_recall ?? 0),
     metricNode("发生 Recall Failure", summary.recall_failures),
-    metricNode("Knowledge Gap", summary.knowledge_gaps),
+    metricNode("Knowledge Gap", summary.knowledgeGapCount ?? summary.knowledge_gaps ?? 0),
     metricNode("训练后独立提取", summary.verified_after_training)
   );
 
@@ -229,14 +229,26 @@ function attemptNode(attempt) {
     const gap = document.createElement("p");
     gap.className = "gap-label";
     gap.textContent = "Knowledge Gap";
+    const userAnswer = document.createElement("p");
+    userAnswer.textContent = `你的回答：${attempt.user_answer || "未形成有效回答"}`;
+    const referenceTitle = document.createElement("p");
+    referenceTitle.textContent = "参考答案：";
     const standard = document.createElement("pre");
     standard.className = "standard-answer";
-    standard.textContent = attempt.standard_answer || "已记录为知识缺口。";
-    article.append(gap, standard);
+    standard.textContent = formatReferenceAnswer(attempt);
+    article.append(gap, userAnswer, referenceTitle, standard);
   } else {
     article.append(retest, transition);
   }
   return article;
+}
+
+function formatReferenceAnswer(attempt) {
+  if (attempt.reference_answer && Array.isArray(attempt.key_points)) {
+    const points = attempt.key_points.map((point) => `• ${point}`).join("\n");
+    return `${attempt.reference_answer}\n\n关键点：\n${points}`;
+  }
+  return attempt.standard_answer || "已记录为知识缺口。";
 }
 
 renderRatings();

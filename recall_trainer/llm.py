@@ -69,6 +69,8 @@ class RecallCoachClient:
 
     def judge_recall(self, question: str, answer: str) -> str:
         fallback = _fallback_judge(answer)
+        if _is_explicit_retrieval_failure(answer):
+            return "recall_failure"
         if not self.api_key:
             return fallback
         prompt = JUDGE_PROMPT.format(question=question, answer=answer)
@@ -82,13 +84,26 @@ class RecallCoachClient:
             return fallback
 
     def generate_standard_answer(self, topic: str, question: str) -> str:
+        reference = self.generate_reference_answer(topic, question)
+        return _format_reference_answer(reference)
+
+    def generate_reference_answer(self, topic: str, question: str) -> dict[str, Any]:
         fallback = _fallback_standard_answer(topic)
         if not self.api_key:
             return fallback
         prompt = STANDARD_ANSWER_PROMPT.format(topic=topic, question=question)
         try:
-            return self._call_deepseek(prompt).strip()[:260] or fallback
-        except (TimeoutError, ValueError, KeyError, urllib.error.URLError):
+            content = self._call_deepseek(prompt).strip()
+            parsed = json.loads(content)
+            reference_answer = str(parsed.get("reference_answer", "")).strip()
+            key_points = [str(item).strip() for item in parsed.get("key_points", []) if str(item).strip()]
+            if not reference_answer or not key_points:
+                return fallback
+            return {
+                "reference_answer": reference_answer[:260],
+                "key_points": key_points[:4],
+            }
+        except (TimeoutError, ValueError, KeyError, urllib.error.URLError, json.JSONDecodeError):
             return fallback
 
     def _call_deepseek(self, user_prompt: str) -> str:
@@ -140,21 +155,55 @@ def _fallback_judge(answer: str) -> str:
     text = answer.strip()
     if not text:
         return "recall_failure"
-    failure_markers = ["不会", "不知道", "想不起来", "记不清", "不清楚", "忘了"]
-    if any(marker in text for marker in failure_markers):
+    if _is_explicit_retrieval_failure(text):
         return "recall_failure"
-    wrong_direction_markers = ["数据库索引", "排序算法", "哈希表"]
+    wrong_direction_markers = ["数据库索引", "排序算法", "哈希表", "加密", "安全传输", "https"]
     if "TCP" in text and any(marker in text for marker in wrong_direction_markers):
         return "knowledge_gap"
     return "L0" if len(text) >= 8 else "recall_failure"
 
 
-def _fallback_standard_answer(topic: str) -> str:
+def _fallback_standard_answer(topic: str) -> dict[str, Any]:
     known = {
-        "TCP 三次握手": "正确结论：TCP 三次握手用于确认双方收发能力并避免历史连接干扰。\n关键知识点：\n1. 客户端和服务端都要确认发送、接收能力。\n2. 第三次握手确认客户端收到服务端响应。\n3. 两次握手可能建立失效历史连接。",
-        "HTTP 与 HTTPS": "正确结论：HTTPS 在 HTTP 基础上增加加密、身份认证和完整性保护。\n关键知识点：\n1. TLS 加密传输内容。\n2. 证书验证服务器身份。\n3. 摘要校验降低篡改风险。",
+        "TCP 三次握手": {
+            "reference_answer": "TCP 三次握手的核心目的是确认客户端和服务端双方的发送与接收能力，并同步初始序列号，从而建立可靠连接。它本身不是为了提供数据加密。",
+            "key_points": ["双方通信能力确认", "初始序列号同步", "避免历史连接干扰"],
+        },
+        "HTTP 与 HTTPS": {
+            "reference_answer": "HTTPS 在 HTTP 基础上通过 TLS 提供加密、身份认证和完整性保护，降低明文传输、伪造服务端和内容篡改风险。",
+            "key_points": ["TLS 加密传输", "证书验证身份", "完整性校验"],
+        },
     }
     return known.get(
         topic,
-        f"正确结论：{topic}是该题的核心知识点，需要先掌握基本定义和关键机制。\n关键知识点：\n1. 说明它解决的问题。\n2. 讲清核心机制。\n3. 能解释典型追问场景。",
+        {
+            "reference_answer": f"{topic}是该题的核心知识点，面试回答需要先说明它解决的问题，再讲清核心机制和典型追问场景。",
+            "key_points": ["说明解决的问题", "讲清核心机制", "解释典型场景"],
+        },
     )
+
+
+def _format_reference_answer(reference: dict[str, Any]) -> str:
+    points = "\n".join(f"{index + 1}. {point}" for index, point in enumerate(reference["key_points"]))
+    return f"正确结论：{reference['reference_answer']}\n关键知识点：\n{points}"
+
+
+def _is_explicit_retrieval_failure(answer: str) -> bool:
+    text = answer.lower()
+    markers = [
+        "不知道",
+        "不太知道",
+        "忘了",
+        "忘记了",
+        "想不起来",
+        "记不起来",
+        "不记得",
+        "卡住了",
+        "没想起来",
+        "i don't know",
+        "i dont know",
+        "i forgot",
+        "can't remember",
+        "cant remember",
+    ]
+    return any(marker in text for marker in markers)

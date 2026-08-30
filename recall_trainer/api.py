@@ -92,10 +92,14 @@ class ApiApp:
             )
         session = answer_current_question(session, answer, judged_level)
         if judged_level and judged_level.value == "Knowledge Gap":
-            active_attempt.standard_answer = self.llm.generate_standard_answer(
+            reference = self.llm.generate_reference_answer(
                 active_attempt.topic,
                 active_attempt.original_question,
             )
+            active_attempt.reference_answer = reference["reference_answer"]
+            active_attempt.key_points = reference["key_points"]
+            points = "\n".join(f"{index + 1}. {point}" for index, point in enumerate(active_attempt.key_points))
+            active_attempt.standard_answer = f"正确结论：{active_attempt.reference_answer}\n关键知识点：\n{points}"
         if session.status.value == "RETEST":
             attempt = session.current_attempt
             attempt.retest_question = self.llm.generate_retest(

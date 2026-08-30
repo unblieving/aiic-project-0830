@@ -221,6 +221,26 @@ class StateMachineTests(unittest.TestCase):
         self.assertEqual(session.current_hint_level, RecallLevel.L1)
         self.assertIsNone(session.current_attempt.first_recall_level)
 
+    def test_failed_reanswer_after_scaffolding_becomes_knowledge_gap(self):
+        session = start_session(
+            SessionConfig(
+                role="backend",
+                domains=["network", "os"],
+                self_ratings={"network": "high", "os": "mid"},
+            )
+        )
+        session = mark_stuck(session)
+        session = advance_scaffold(session, "还是没有")
+        session = advance_scaffold(session, "想不起来")
+        session = advance_scaffold(session, "还是不会")
+
+        session = answer_current_question(session, "仍然不会", RecallLevel.KNOWLEDGE_GAP)
+
+        first = get_result_summary(session)["attempts"][0]
+        self.assertTrue(first["knowledge_gap"])
+        self.assertEqual(first["first_recall_level"], "Knowledge Gap")
+        self.assertEqual(session.status, TrainingStatus.QUESTION)
+
     def test_result_summary_counts_knowledge_gaps_separately(self):
         session = start_session(
             SessionConfig(
@@ -234,8 +254,23 @@ class StateMachineTests(unittest.TestCase):
         summary = get_result_summary(session)
 
         self.assertEqual(summary["knowledge_gaps"], 1)
+        self.assertEqual(summary["knowledgeGapCount"], 1)
         self.assertEqual(summary["recall_failures"], 0)
         self.assertEqual(summary["independent_first"], 0)
+
+    def test_result_summary_uses_zero_for_missing_categories(self):
+        session = start_session(
+            SessionConfig(
+                role="backend",
+                domains=["network"],
+                self_ratings={"network": "high"},
+            )
+        )
+
+        summary = get_result_summary(session)
+
+        self.assertEqual(summary["improvedRecallCount"], 0)
+        self.assertEqual(summary["knowledgeGapCount"], 0)
 
     def test_all_queued_retests_are_asked_before_result(self):
         session = start_session(
