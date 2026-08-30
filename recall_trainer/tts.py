@@ -20,8 +20,8 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TTS_URL = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
-_DEFAULT_TTS_RESOURCE_ID = "Speech_Synthesis2000000933495388706"
-_DEFAULT_TTS_VOICE_TYPE = "BV001_streaming"
+_DEFAULT_TTS_RESOURCE_ID = "volc.tts.default"  # Official Volcengine TTS resource ID
+_DEFAULT_TTS_VOICE_TYPE = "BV001_streaming"  # Female voice streaming
 
 
 def is_tts_configured() -> bool:
@@ -60,8 +60,13 @@ def _parse_tts_response(body: str) -> dict[str, Any]:
     raise ValueError("TTS response did not contain valid JSON")
 
 
-def synthesize_speech(text: str, voice: str = "zh_female_01") -> dict[str, Any]:
+def synthesize_speech(text: str, voice: str = "") -> dict[str, Any]:
     """Convert text to speech audio.
+
+    Args:
+        text: The text to convert to speech
+        voice: Optional voice type override (e.g., "BV001_streaming", "BV002_streaming").
+               If not provided, uses VOLCENGINE_TTS_VOICE_TYPE from environment.
 
     Returns a dict with ``audio_base64`` and ``format`` keys on success,
     or a dict with ``error`` / ``upstream_status`` / ``upstream_message``
@@ -73,7 +78,7 @@ def synthesize_speech(text: str, voice: str = "zh_female_01") -> dict[str, Any]:
 
     tts_url = os.getenv("VOLCENGINE_TTS_URL", _DEFAULT_TTS_URL)
     resource_id = os.getenv("VOLCENGINE_TTS_RESOURCE_ID", _DEFAULT_TTS_RESOURCE_ID)
-    voice_type = voice if voice != "zh_female_01" else os.getenv("VOLCENGINE_TTS_VOICE_TYPE", _DEFAULT_TTS_VOICE_TYPE)
+    voice_type = voice or os.getenv("VOLCENGINE_TTS_VOICE_TYPE", _DEFAULT_TTS_VOICE_TYPE)
 
     payload = {
         "user": {"uid": os.getenv("VOLCENGINE_TTS_UID", "recall-trainer")},
