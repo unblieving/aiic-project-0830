@@ -233,6 +233,10 @@ function showTraining(payload) {
     coachBox.textContent = payload.scaffold || "好，现在不看刚才的提示，重新完整回答一次最开始的问题。";
     coachBox.classList.remove("hidden");
   }
+
+  // TTS: load audio for question or scaffold
+  const ttsText = payload.scaffold || payload.current.question;
+  loadTTSAudio(ttsText);
 }
 
 function showResult(summary) {
@@ -301,6 +305,240 @@ function formatReferenceAnswer(attempt) {
     return `${attempt.reference_answer}\n\n关键点：\n${points}`;
   }
   return attempt.standard_answer || "已记录为知识缺口。";
+}
+
+// ============================================================
+// Voice Functions
+// ============================================================
+
+function updateVoiceUI() {
+  const startBtn = document.querySelector("#start-voice");
+  const ttsPanel = document.querySelector("#tts-panel");
+  if (!voiceState.asrConfigured) {
+    startBtn.classList.add("voice-disabled");
+    startBtn.title = "Voice service is not configured";
+  } else {
+    startBtn.classList.remove("voice-disabled");
+    startBtn.title = "开始语音回答";
+  }
+  if (voiceState.ttsConfigured) {
+    ttsPanel.classList.remove("hidden");
+  } else {
+    ttsPanel.classList.add("hidden");
+  }
+}
+
+async function startVoiceRecording() {
+  if (!voiceState.asrConfigured) {
+    trainingError.textContent = "Voice service is not configured.";
+    return;
+  }
+  if (voiceState.isRecording) return;
+  trainingError.textContent = "";
+  const startBtn = document.querySelector("#start-voice");
+  const stopBtn = document.querySelector("#stop-voice");
+  const statusText = document.querySelector("#voice-status");
+  const transcriptPanel = document.querySelector("#voice-transcript");
+  const transcriptText = document.querySelector("#transcript-text");
+  const transcriptFinal = document.querySelector("#transcript-final");
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true }
+    });
+    voiceState.mediaStream = stream;
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    voiceState.audioContext = audioCtx;
+    const source = audioCtx.createMediaStreamSource(stream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    voiceState.analyser = analyser;
+    source.connect(analyser);
+    const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+    voiceState.scriptProcessor = processor;
+    analyser.connect(processor);
+    processor.connect(audioCtx.destination);
+    const wsUrl = `ws://${window.location.hostname}:${voiceState.wsPort}/ws/asr`;
+    const ws = new WebSocket(wsUrl);
+    voiceState.ws = ws;
+    ws.onopen = () => { ws.send(JSON.stringify({ type: "start" })); };
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "started") {
+        statusText.textContent = "🔴 录音中...";
+        startBtn.classList.add("recording");
+      } else if (msg.type === "transcript") {
+        if (msg.isFinal) {
+          voiceState.finalTranscript = msg.text;
+          transcriptFinal.textContent = msg.text;
+          transcriptFinal.classList.remove("hidden");
+          answer.value = msg.text;
+        } else {
+          voiceState.partialTranscript = msg.text;
+          transcriptText.textContent = msg.text;
+          answer.value = msg.text;
+        }
+      } else if (msg.type === "error") {
+        statusText.textContent = `错误: ${msg.message}`;
+        trainingError.textContent = `语音识别错误: ${msg.message}`;
+      }
+    };
+    ws.onerror = () => {
+      statusText.textContent = "WebSocket 连接失败";
+      trainingError.textContent = "语音服务连接失败，请使用文字回答。";
+    };
+    ws.onclose = () => {
+      if (voiceState.isRecording) statusText.textContent = "连接已断开";
+    };
+    voiceState.isRecording = true;
+    voiceState.recordingStartTime = Date.now();
+    voiceState.firstSpeechTime = 0;
+    voiceState.maxPauseMs = 0;
+    voiceState.currentPauseStart = 0;
+    voiceState.isSpeaking = false;
+    voiceState.finalTranscript = "";
+    voiceState.partialTranscript = "";
+    transcriptText.textContent = "";
+    transcriptFinal.textContent = "";
+    transcriptFinal.classList.add("hidden");
+    processor.onaudioprocess = (e) => {
+      if (!voiceState.isRecording) return;
+      const inputData = e.inputBuffer.getChannelData(0);
+      let sum = 0;
+      for (let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
+      const rms = Math.sqrt(sum / inputData.length);
+      const isSilent = rms < 0.01;
+      const now = Date.now();
+      if (!isSilent && !voiceState.isSpeaking) {
+        voiceState.isSpeaking = true;
+        if (voiceState.firstSpeechTime === 0) voiceState.firstSpeechTime = now;
+        if (voiceState.currentPauseStart > 0) {
+          const pauseDuration = now - voiceState.currentPauseStart;
+          if (pauseDuration > voiceState.maxPauseMs) voiceState.maxPauseMs = pauseDuration;
+          voiceState.currentPauseStart = 0;
+        }
+      } else if (isSilent && voiceState.isSpeaking) {
+        voiceState.isSpeaking = false;
+        voiceState.currentPauseStart = now;
+      }
+      const pcm = new Int16Array(inputData.length);
+      for (let i = 0; i < inputData.length; i++) {
+        const s = Math.max(-1, Math.min(1, inputData[i]));
+        pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      }
+      let binary = "";
+      const bytes = new Uint8Array(pcm.buffer);
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      const base64 = btoa(binary);
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "audio", audio: base64 }));
+      }
+    };
+    startBtn.classList.add("hidden");
+    stopBtn.classList.remove("hidden");
+    transcriptPanel.classList.remove("hidden");
+    statusText.textContent = "连接中...";
+  } catch (err) {
+    trainingError.textContent = `无法访问麦克风: ${err.message}`;
+    cleanupVoiceRecording();
+  }
+}
+
+function stopVoiceRecording() {
+  if (!voiceState.isRecording) return;
+  const statusText = document.querySelector("#voice-status");
+  statusText.textContent = "处理中...";
+  if (voiceState.ws && voiceState.ws.readyState === WebSocket.OPEN) {
+    voiceState.ws.send(JSON.stringify({ type: "stop" }));
+  }
+  if (voiceState.scriptProcessor) voiceState.scriptProcessor.disconnect();
+  if (voiceState.mediaStream) voiceState.mediaStream.getTracks().forEach((t) => t.stop());
+  voiceState.isRecording = false;
+  const startBtn = document.querySelector("#start-voice");
+  const stopBtn = document.querySelector("#stop-voice");
+  startBtn.classList.remove("hidden", "recording");
+  stopBtn.classList.add("hidden");
+  setTimeout(() => {
+    if (voiceState.ws) { voiceState.ws.close(); voiceState.ws = null; }
+    statusText.textContent = voiceState.finalTranscript ? "✓ 识别完成" : "录音结束";
+  }, 2000);
+}
+
+function cleanupVoiceRecording() {
+  if (voiceState.scriptProcessor) { voiceState.scriptProcessor.disconnect(); voiceState.scriptProcessor = null; }
+  if (voiceState.analyser) { voiceState.analyser.disconnect(); voiceState.analyser = null; }
+  if (voiceState.audioContext) { voiceState.audioContext.close().catch(() => {}); voiceState.audioContext = null; }
+  if (voiceState.mediaStream) { voiceState.mediaStream.getTracks().forEach((t) => t.stop()); voiceState.mediaStream = null; }
+  if (voiceState.ws) { voiceState.ws.close(); voiceState.ws = null; }
+  voiceState.isRecording = false;
+}
+
+function getVoiceSignals() {
+  const now = Date.now();
+  const answerDurationMs = voiceState.recordingStartTime ? now - voiceState.recordingStartTime : 0;
+  const firstSpeechLatencyMs = voiceState.firstSpeechTime ? voiceState.firstSpeechTime - voiceState.recordingStartTime : 0;
+  let maxPause = voiceState.maxPauseMs;
+  if (voiceState.currentPauseStart > 0 && !voiceState.isSpeaking) {
+    const endPause = now - voiceState.currentPauseStart;
+    if (endPause > maxPause) maxPause = endPause;
+  }
+  return { answerDurationMs, firstSpeechLatencyMs, maxPauseMs: maxPause };
+}
+
+function resetVoiceState() {
+  cleanupVoiceRecording();
+  voiceState.finalTranscript = "";
+  voiceState.partialTranscript = "";
+  voiceState.recordingStartTime = 0;
+  voiceState.firstSpeechTime = 0;
+  voiceState.maxPauseMs = 0;
+  voiceState.currentPauseStart = 0;
+  voiceState.isSpeaking = false;
+  const transcriptPanel = document.querySelector("#voice-transcript");
+  const transcriptText = document.querySelector("#transcript-text");
+  const transcriptFinal = document.querySelector("#transcript-final");
+  const statusText = document.querySelector("#voice-status");
+  if (transcriptPanel) transcriptPanel.classList.add("hidden");
+  if (transcriptText) transcriptText.textContent = "";
+  if (transcriptFinal) { transcriptFinal.textContent = ""; transcriptFinal.classList.add("hidden"); }
+  if (statusText) statusText.textContent = "";
+}
+
+// ============================================================
+// TTS Functions
+// ============================================================
+
+let currentTTSText = "";
+
+function playTTS() {
+  if (!currentTTSText) return;
+  const audio = document.querySelector("#tts-audio");
+  if (audio.src) {
+    audio.play().catch(() => {});
+    document.querySelector("#tts-play").classList.add("hidden");
+    document.querySelector("#tts-stop").classList.remove("hidden");
+  }
+}
+
+function stopTTS() {
+  const audio = document.querySelector("#tts-audio");
+  audio.pause();
+  audio.currentTime = 0;
+  document.querySelector("#tts-play").classList.remove("hidden");
+  document.querySelector("#tts-stop").classList.add("hidden");
+}
+
+async function loadTTSAudio(text) {
+  if (!voiceState.ttsConfigured || !text) return;
+  try {
+    const result = await api("/api/tts", { text });
+    if (result && result.audio_base64) {
+      const audio = document.querySelector("#tts-audio");
+      audio.src = `data:audio/${result.format || "mp3"};base64,${result.audio_base64}`;
+      currentTTSText = text;
+      const autoPlay = document.querySelector("#tts-auto");
+      if (autoPlay && autoPlay.checked) audio.play().catch(() => {});
+    }
+  } catch (e) { /* TTS failure is non-fatal */ }
 }
 
 renderRatings();

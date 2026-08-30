@@ -31,6 +31,7 @@ def is_asr_configured() -> bool:
 
 def get_ws_port() -> int:
     """Return the WebSocket proxy port."""
+    return int(os.getenv("VOLCENGINE_WS_PORT", "8082"))
 
 
 class VolcengineASRClient:
@@ -132,5 +133,3 @@ class VolcengineASRClient:
         if code != 0:
             logger.warning("ASR error: code=%s msg=%s", code, raw.get("message", ""))
         return {"text": text, "is_final": is_final, "raw": raw}
-
-    return int(os.getenv("WS_PORT", "8082"))

@@ -40,8 +40,29 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             self._send_json({"error": "Invalid JSON."}, status=400)
             return
-        response = APP.handle("POST", urlparse(self.path).path, payload)
+        
+        parsed_path = urlparse(self.path).path
+        
+        # Handle TTS endpoint
+        if parsed_path == "/api/tts":
+            self._handle_tts(payload)
+            return
+        
+        response = APP.handle("POST", parsed_path, payload)
         self._send_json(response, status=400 if "error" in response else 200)
+    
+    def _handle_tts(self, payload: dict) -> None:
+        text = payload.get("text", "")
+        if not text:
+            self._send_json({"error": "No text provided"}, status=400)
+            return
+        
+        try:
+            from recall_trainer.tts import synthesize_speech
+            result = synthesize_speech(text)
+            self._send_json(result)
+        except Exception as exc:
+            self._send_json({"error": f"TTS failed: {exc}"}, status=500)
 
     def log_message(self, format: str, *args: object) -> None:
         return
