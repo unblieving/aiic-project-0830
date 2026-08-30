@@ -285,6 +285,32 @@ button.secondary:hover {
 }
 
 /* Voice live conversation mode */
+.voice-prompt-panel {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafb;
+}
+
+.voice-question-count {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.voice-prompt-status {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.voice-replay {
+  width: fit-content;
+}
+
 .voice-live {
   margin: 16px 0;
 }

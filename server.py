@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import mimetypes
 import os
@@ -60,6 +61,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             from recall_trainer.tts import synthesize_speech
             result = synthesize_speech(text)
+            if result.get("audio_base64"):
+                audio = base64.b64decode(result["audio_base64"])
+                content_type = "audio/wav" if result.get("format") == "wav" else "audio/mpeg"
+                self._send_bytes(audio, content_type=content_type)
+                return
             self._send_json(result)
         except Exception as exc:
             self._send_json({"error": f"TTS failed: {exc}"}, status=500)
@@ -69,8 +75,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send_json(self, payload: dict, status: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self._send_bytes(body, status=status, content_type="application/json; charset=utf-8")
+
+    def _send_bytes(self, body: bytes, status: int = 200, content_type: str = "application/octet-stream") -> None:
         self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
