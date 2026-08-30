@@ -12,6 +12,7 @@ import base64
 import json
 import logging
 import os
+import uuid
 import urllib.error
 import urllib.request
 from typing import Any
@@ -19,11 +20,13 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TTS_URL = "https://openspeech.bytedance.com/api/v1/tts"
+_DEFAULT_TTS_CLUSTER = "volcano_tts"
+_DEFAULT_TTS_VOICE_TYPE = "BV001_streaming"
 
 
 def is_tts_configured() -> bool:
     """Return True when the Volcengine TTS API key is available."""
-    return bool(os.getenv("VOLCENGINE_API_KEY", ""))
+    return bool(os.getenv("VOLCENGINE_API_KEY", "") and os.getenv("VOLCENGINE_TTS_APP_ID", ""))
 
 
 def synthesize_speech(text: str, voice: str = "zh_female_01") -> dict[str, Any]:
@@ -38,12 +41,41 @@ def synthesize_speech(text: str, voice: str = "zh_female_01") -> dict[str, Any]:
         return {"error": "VOLCENGINE_API_KEY not set"}
 
     tts_url = os.getenv("VOLCENGINE_TTS_URL", _DEFAULT_TTS_URL)
+    app_id = os.getenv("VOLCENGINE_TTS_APP_ID", "")
+    access_token = os.getenv("VOLCENGINE_TTS_ACCESS_TOKEN", "")
+    cluster = os.getenv("VOLCENGINE_TTS_CLUSTER", _DEFAULT_TTS_CLUSTER)
+    voice_type = voice if voice != "zh_female_01" else os.getenv("VOLCENGINE_TTS_VOICE_TYPE", _DEFAULT_TTS_VOICE_TYPE)
+
+    if not app_id:
+        return {
+            "error": "VOLCENGINE_TTS_APP_ID not set",
+            "upstream_message": "Volcengine TTS v1 requires app.appid.",
+        }
+    if not access_token:
+        return {
+            "error": "VOLCENGINE_TTS_ACCESS_TOKEN not set",
+            "upstream_message": "Volcengine TTS v1 requires app.token. Do not reuse the new console API key here unless Volcengine documents it for this instance.",
+        }
 
     payload = {
-        "text": text,
-        "voice": voice,
-        "format": "mp3",
-        "sample_rate": 24000,
+        "app": {
+            "appid": app_id,
+            "token": access_token,
+            "cluster": cluster,
+        },
+        "user": {
+            "uid": os.getenv("VOLCENGINE_TTS_UID", "recall-trainer"),
+        },
+        "audio": {
+            "voice_type": voice_type,
+            "encoding": "mp3",
+            "rate": 24000,
+        },
+        "request": {
+            "reqid": str(uuid.uuid4()),
+            "text": text,
+            "operation": "query",
+        },
     }
 
     try:
@@ -58,6 +90,13 @@ def synthesize_speech(text: str, voice: str = "zh_female_01") -> dict[str, Any]:
         )
         with urllib.request.urlopen(request, timeout=10) as response:
             data = json.loads(response.read().decode("utf-8"))
+
+        if data.get("code") not in {None, 3000}:
+            return {
+                "error": "TTS request failed",
+                "upstream_status": 200,
+                "upstream_message": json.dumps(data, ensure_ascii=False)[:1000],
+            }
 
         audio_data = data.get("audio") or data.get("data", "")
         if not audio_data:
