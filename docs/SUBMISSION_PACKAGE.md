@@ -5,22 +5,9 @@
 - Product link: http://43.132.173.100
 - GitHub repository: https://github.com/unblieving/aiic-project-0830
 - Product Memo: [PRODUCT_MEMO.md](../PRODUCT_MEMO.md)
-- Demo script: [DEMO_SCRIPT.md](../DEMO_SCRIPT.md)
-
 ## One-line Pitch
 
 AI Interview Recall Trainer helps first-time technical interview candidates turn knowledge they have already learned into answers they can actively recall under interview pressure.
-
-## What To Show In The Demo
-
-1. Start from the mode selection page and choose text mode for the most stable path.
-2. Select backend interview domains such as computer networks, operating systems, databases, Java/JVM/concurrency, Redis, data structures, or system design.
-3. Trigger a cold question.
-4. Use "I am stuck" to enter L1/L2/L3 progressive scaffolding.
-5. Recover and perform the required full re-answer without seeing the scaffold.
-6. Continue through interleaving questions.
-7. Show the surprise retest.
-8. End on the result page, highlighting Independent Recall, Improved Recall, and Knowledge Gap.
 
 ## Core Product Evidence
 

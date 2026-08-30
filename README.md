@@ -10,7 +10,6 @@ AI Interview Recall Trainer is an MVP for first-time technical interview candida
 - GitHub repository: https://github.com/unblieving/aiic-project-0830
 - Submission package: [docs/SUBMISSION_PACKAGE.md](docs/SUBMISSION_PACKAGE.md)
 - Product Memo: [PRODUCT_MEMO.md](PRODUCT_MEMO.md)
-- Demo script: [DEMO_SCRIPT.md](DEMO_SCRIPT.md)
 - Research notes: [docs/RESEARCH_NOTES.md](docs/RESEARCH_NOTES.md)
 - Prototype notes: [docs/PROTOTYPE_NOTES.md](docs/PROTOTYPE_NOTES.md)
 - Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
