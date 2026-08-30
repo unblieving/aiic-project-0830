@@ -75,9 +75,10 @@ def synthesize_speech(text: str, voice: str = "zh_female_01") -> dict[str, Any]:
 
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
-        logger.error("[TTS] HTTP %s response=%s", exc.code, body)
+        logger.error("[TTS] upstream status=%s", exc.code)
+        logger.error("[TTS] response=%s", body)
         return {
-            "error": "TTS upstream request failed",
+            "error": "TTS request failed",
             "upstream_status": exc.code,
             "upstream_message": body[:1000],
         }
