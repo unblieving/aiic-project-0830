@@ -3,9 +3,14 @@
   --bg-2: #0d1d2f;
   --panel: rgba(17, 27, 43, 0.72);
   --panel-strong: rgba(10, 18, 29, 0.88);
+  --surface: #f5fbff;
+  --surface-strong: #ffffff;
+  --surface-soft: #eaf4ff;
   --text: #ecf4ff;
+  --text-strong: #0f172a;
+  --text-soft: #334155;
   --muted: #9bb5cf;
-  --line: rgba(143, 181, 218, 0.18);
+  --line: rgba(143, 181, 218, 0.2);
   --primary: #7ef7d3;
   --primary-strong: #4fe0af;
   --primary-dark: #1ab88c;
@@ -161,13 +166,20 @@ select,
 textarea {
   width: 100%;
   margin-top: 8px;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(148, 163, 184, 0.7);
   border-radius: 14px;
   padding: 14px 16px;
-  color: var(--text);
-  background: rgba(6, 13, 22, 0.38);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  color: var(--text-strong);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0 0 1px rgba(148, 163, 184, 0.15);
   font: inherit;
+}
+
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: rgba(26, 184, 140, 0.9);
+  box-shadow: 0 0 0 4px rgba(126, 247, 211, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
 fieldset {
@@ -239,17 +251,18 @@ textarea {
 button {
   min-height: 44px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 12px;
   padding: 0 18px;
-  background: var(--primary);
-  color: white;
+  background: linear-gradient(135deg, var(--primary-strong), var(--primary-dark));
+  color: #06281f;
   font: inherit;
-  font-weight: 700;
+  font-weight: 800;
   cursor: pointer;
+  box-shadow: 0 10px 22px rgba(31, 200, 157, 0.2);
 }
 
 button:hover {
-  background: var(--primary-dark);
+  background: linear-gradient(135deg, #90f3d8, var(--primary-dark));
 }
 
 button:disabled {
@@ -258,12 +271,14 @@ button:disabled {
 }
 
 button.secondary {
-  background: #e9edf1;
-  color: var(--text);
+  background: var(--surface-soft);
+  color: var(--text-strong);
+  border: 1px solid rgba(51, 65, 85, 0.12);
+  box-shadow: none;
 }
 
 button.secondary:hover {
-  background: #dbe2e8;
+  background: #dfeeff;
 }
 
 .error {
@@ -341,20 +356,21 @@ button.secondary:hover {
   align-items: center;
   gap: 8px;
   padding: 28px 20px;
-  border: 2px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-  color: var(--text);
+  border: 2px solid rgba(148, 163, 184, 0.42);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--text-strong);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
   min-height: 140px;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
 }
 
 .mode-card:hover {
-  border-color: var(--primary);
-  background: #f0faf7;
+  border-color: rgba(26, 184, 140, 0.9);
+  background: linear-gradient(180deg, #ffffff, #ebfff9);
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(18, 107, 93, 0.12);
+  box-shadow: 0 18px 28px rgba(18, 107, 93, 0.14);
 }
 
 .mode-icon {
@@ -363,13 +379,15 @@ button.secondary:hover {
 
 .mode-title {
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 800;
+  color: var(--text-strong);
 }
 
 .mode-desc {
   font-size: 14px;
-  color: var(--muted);
-  font-weight: 400;
+  color: var(--text-soft);
+  font-weight: 500;
+  text-align: center;
 }
 
 /* Voice live conversation mode */
