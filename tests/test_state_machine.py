@@ -47,7 +47,7 @@ class StateMachineTests(unittest.TestCase):
         self.assertEqual(session.current_attempt.self_rating, "high")
         self.assertIn("TCP", session.current_attempt.original_question)
 
-    def test_start_session_builds_about_six_questions(self):
+    def test_start_session_builds_five_questions(self):
         session = start_session(
             SessionConfig(
                 role="backend",
@@ -56,7 +56,7 @@ class StateMachineTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(len(session.questions), 6)
+        self.assertEqual(len(session.questions), 5)
 
     def test_self_ratings_weight_domain_sampling(self):
         sequence = build_weighted_domain_sequence(
@@ -169,6 +169,37 @@ class StateMachineTests(unittest.TestCase):
         self.assertEqual(tcp["retest_recall_level"], "L0")
         self.assertEqual(tcp["transition"], "L3 -> L0")
         self.assertTrue(tcp["verified"])
+        self.assertEqual(tcp["status"], "recovered")
+        self.assertEqual(tcp["max_scaffold_level"], 3)
+
+    def test_result_summary_exposes_stable_result_page_schema(self):
+        session = start_session(
+            SessionConfig(
+                role="backend",
+                domains=["network", "os", "db"],
+                self_ratings={"network": "high", "os": "mid", "db": "low"},
+            )
+        )
+        self.assertEqual(len(session.questions), 5)
+
+        session = answer_current_question(session, "三次握手确认双方收发能力", RecallLevel.L0)
+        session = mark_stuck(session)
+        session = recover_from_scaffold(session, "线程切换更轻")
+        session = answer_current_question(session, "完整回答线程区别", RecallLevel.L0)
+        session = answer_current_question(session, "索引是 TCP", RecallLevel.KNOWLEDGE_GAP)
+
+        summary = get_result_summary(session)
+
+        self.assertEqual(summary["total_questions"], 3)
+        self.assertEqual(summary["recalled_count"], 2)
+        self.assertEqual(summary["knowledge_gap_count"], 1)
+        self.assertEqual(summary["recovered_count"], 1)
+        self.assertIn("items", summary)
+        self.assertEqual(summary["items"][0]["status"], "independent_recall")
+        self.assertEqual(summary["items"][0]["max_scaffold_level"], 0)
+        self.assertEqual(summary["items"][1]["status"], "recovered")
+        self.assertEqual(summary["items"][1]["max_scaffold_level"], 1)
+        self.assertEqual(summary["items"][2]["status"], "knowledge_gap")
 
     def test_failed_retest_is_not_marked_verified(self):
         session = start_session(

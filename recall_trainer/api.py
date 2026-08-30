@@ -138,7 +138,9 @@ class ApiApp:
         session = self.sessions.get(session_id)
         if session is None:
             return {"error": "Session not found."}
-        return get_result_summary(session)
+        result_payload = get_result_summary(session)
+        print("[RESULT SERVER]", result_payload)
+        return result_payload
 
     def _get_session(self, payload: dict[str, Any]) -> TrainingSession:
         session_id = str(payload.get("sessionId", ""))

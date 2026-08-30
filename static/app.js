@@ -258,6 +258,7 @@ function showTraining(payload) {
 async function showResult() {
   if (state.mode === "voice") stopVoiceRecording();
   const payload = await api(`/api/result?sessionId=${state.sessionId}`);
+  console.log("[RESULT] raw result =", payload);
   document.querySelector("#training").classList.add("hidden");
   document.querySelector("#result").classList.remove("hidden");
   renderResult(payload);
@@ -791,30 +792,63 @@ function renderRatings() {
 // ============================================================
 
 function renderResult(summary) {
+  const totalQuestions = Number(summary.total_questions ?? 0);
+  const recalledCount = Number(summary.recalled_count ?? 0);
+  const knowledgeGapCount = Number(summary.knowledge_gap_count ?? 0);
+  const recoveredCount = Number(summary.recovered_count ?? 0);
+  const items = Array.isArray(summary.items) ? summary.items : [];
   document.querySelector("#metrics").innerHTML = `
-    <div class="metric">题目数<strong>${summary.total}</strong></div>
-    <div class="metric">成功调出<strong>${summary.l0_count}</strong></div>
-    <div class="metric">知识缺口<strong>${summary.knowledge_gap_count}</strong></div>`;
-  document.querySelector("#attempts").innerHTML = summary.attempts.map(renderAttempt).join("");
+    <div class="metric">题目数<strong>${totalQuestions}</strong></div>
+    <div class="metric">成功调出<strong>${recalledCount}</strong></div>
+    <div class="metric">知识缺口<strong>${knowledgeGapCount}</strong></div>`;
+  const subtitle = document.querySelector("#result-summary");
+  if (subtitle) {
+    subtitle.textContent = `本轮 ${totalQuestions} 个知识点中，你成功调出 ${recalledCount} 个，其中 ${recoveredCount} 个是在提示后恢复的。`;
+  }
+  document.querySelector("#attempts").innerHTML = items.map(renderAttempt).join("");
 }
 
 function renderAttempt(a) {
-  const st = a.recall_level === "L0" ? "✅ 成功调出"
-    : a.recall_level === "recall_failure" ? "🔄 调取困难" : "❌ 知识缺口";
-  const ref = a.recall_level === "knowledge_gap"
-    ? `<p class="standard-answer">${fmtRef(a)}</p>` : "";
-  const rt = a.retest_question
-    ? `<p class="transition">→ 变式重测：${a.retest_question}</p>` : "";
-  return `<div class="attempt"><strong>${a.topic}</strong>
-    <p>${a.original_question}</p><p>${st}</p>${rt}${ref}</div>`;
+  if (a.status === "independent_recall") {
+    return `<div class="attempt"><strong>${escapeHtml(a.concept || a.topic || "")}</strong>
+      <p>${escapeHtml(a.question || "")}</p>
+      <p>✅ 独立调出</p>
+      <p class="transition">无需提示即可回答</p></div>`;
+  }
+  if (a.status === "recovered") {
+    const maxLevel = Number(a.max_scaffold_level || 0);
+    return `<div class="attempt"><strong>${escapeHtml(a.concept || a.topic || "")}</strong>
+      <p>${escapeHtml(a.question || "")}</p>
+      <p>🟡 提示后成功调出</p>
+      <p class="transition">${escapeHtml(recoveryPath(maxLevel))}</p>
+      <p>你在第 ${maxLevel} 层提示后恢复了这个知识点。</p></div>`;
+  }
+  return `<div class="attempt"><strong>${escapeHtml(a.concept || a.topic || "")}</strong>
+    <p>${escapeHtml(a.question || "")}</p>
+    <p>❌ 知识缺口</p>
+    <p>你的回答：${escapeHtml(a.user_answer || "")}</p>
+    <p class="standard-answer">参考答案：${escapeHtml(fmtRef(a))}</p></div>`;
 }
 
 function fmtRef(a) {
-  if (a.reference_answer && Array.isArray(a.key_points)) {
-    const pts = a.key_points.map((p) => `• ${p}`).join("\n");
-    return `${a.reference_answer}\n\n关键点：\n${pts}`;
-  }
+  if (a.reference_answer) return a.reference_answer;
   return a.standard_answer || "已记录为知识缺口。";
+}
+
+function recoveryPath(maxLevel) {
+  const parts = ["独立回忆"];
+  for (let level = 1; level <= maxLevel; level++) parts.push(`L${level}`);
+  parts.push("成功调出");
+  return parts.join(" → ");
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 // Init

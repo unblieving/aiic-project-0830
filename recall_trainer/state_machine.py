@@ -321,13 +321,19 @@ def get_result_summary(session: TrainingSession) -> dict[str, Any]:
             continue
         first_level = attempt.first_recall_level.value
         retest_level = attempt.retest_recall_level.value if attempt.retest_recall_level else "-"
+        status = _result_status(attempt)
+        max_scaffold_level = _max_scaffold_level(attempt)
         attempts.append(
             {
+                "concept": attempt.topic,
                 "topic": attempt.topic,
+                "question": attempt.original_question,
                 "self_rating": attempt.self_rating,
                 "first_recall_level": first_level,
                 "retest_recall_level": retest_level,
                 "transition": f"{first_level} -> {retest_level}",
+                "status": status,
+                "max_scaffold_level": max_scaffold_level,
                 "verified": attempt.verified,
                 "knowledge_gap": attempt.first_recall_level == RecallLevel.KNOWLEDGE_GAP,
                 "standard_answer": attempt.standard_answer,
@@ -344,8 +350,17 @@ def get_result_summary(session: TrainingSession) -> dict[str, Any]:
         and item["retest_recall_level"] == "L0"
     )
     knowledge_gap_count = sum(1 for item in attempts if item["knowledge_gap"])
+    recovered_count = sum(1 for item in attempts if item["status"] == "recovered")
+    recalled_count = sum(
+        1 for item in attempts if item["status"] in {"independent_recall", "recovered"}
+    )
 
     return {
+        "total_questions": len(attempts),
+        "recalled_count": recalled_count,
+        "knowledge_gap_count": knowledge_gap_count,
+        "recovered_count": recovered_count,
+        "items": attempts,
         "trained_topics": len(attempts),
         "independent_first": sum(1 for item in attempts if item["first_recall_level"] == "L0"),
         "recall_failures": sum(
@@ -383,7 +398,7 @@ def serialize_session(session: TrainingSession) -> dict[str, Any]:
 def _build_attempts(config: SessionConfig) -> list[KnowledgeAttempt]:
     attempts: list[KnowledgeAttempt] = []
     domain_cursors = {domain: 0 for domain in config.domains}
-    for domain in build_weighted_domain_sequence(config.domains, config.self_ratings, total=6):
+    for domain in build_weighted_domain_sequence(config.domains, config.self_ratings, total=5):
         bank = QUESTION_BANK.get(domain, [])
         if not bank:
             continue
@@ -421,7 +436,7 @@ def _build_attempts(config: SessionConfig) -> list[KnowledgeAttempt]:
 def build_weighted_domain_sequence(
     domains: list[str],
     self_ratings: dict[str, str],
-    total: int = 6,
+    total: int = 5,
 ) -> list[str]:
     weighted = []
     for domain in domains:
@@ -464,6 +479,26 @@ def build_weighted_domain_sequence(
                 if len(sequence) == total:
                     break
     return sequence
+
+
+def _result_status(attempt: KnowledgeAttempt) -> str:
+    if attempt.first_recall_level == RecallLevel.KNOWLEDGE_GAP:
+        return "knowledge_gap"
+    if attempt.first_recall_level == RecallLevel.L0:
+        return "independent_recall"
+    return "recovered"
+
+
+def _max_scaffold_level(attempt: KnowledgeAttempt) -> int:
+    levels = {
+        RecallLevel.L0: 0,
+        RecallLevel.L1: 1,
+        RecallLevel.L2: 2,
+        RecallLevel.L3: 3,
+        RecallLevel.FAILURE: 0,
+        RecallLevel.KNOWLEDGE_GAP: 0,
+    }
+    return levels.get(attempt.first_recall_level, 0)
 
 
 def _append_first_answer(session: TrainingSession, text: str) -> None:
