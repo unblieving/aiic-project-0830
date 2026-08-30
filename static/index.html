@@ -49,6 +49,24 @@
         </div>
         <h2 id="question"></h2>
         <div id="coach-box" class="coach hidden"></div>
+
+        <!-- Voice controls -->
+        <div id="voice-panel">
+          <div id="voice-controls" class="voice-controls">
+            <button id="start-voice" type="button" class="voice-btn" title="开始语音回答">
+              🎤 语音回答
+            </button>
+            <button id="stop-voice" type="button" class="voice-btn voice-btn-stop hidden" title="结束录音">
+              ⏹ 结束录音
+            </button>
+            <span id="voice-status" class="voice-status-text"></span>
+          </div>
+          <div id="voice-transcript" class="voice-transcript hidden">
+            <div id="transcript-text" class="transcript-text"></div>
+            <div id="transcript-final" class="transcript-final hidden"></div>
+          </div>
+        </div>
+
         <textarea id="answer" rows="7" placeholder="输入回答……"></textarea>
         <p id="training-error" class="error" role="alert"></p>
         <div class="actions">
@@ -58,6 +76,16 @@
           <button id="more-scaffold" type="button" class="secondary hidden">继续提示</button>
           <button id="show-result" type="button" class="secondary hidden">查看结果</button>
         </div>
+
+        <!-- TTS playback controls -->
+        <div id="tts-panel" class="tts-panel hidden">
+          <button id="tts-play" type="button" class="secondary tts-btn">🔊 播放语音</button>
+          <button id="tts-stop" type="button" class="secondary tts-btn hidden">⏸ 停止</button>
+          <label class="tts-toggle">
+            <input type="checkbox" id="tts-auto" checked /> 自动播放语音
+          </label>
+        </div>
+        <audio id="tts-audio" class="hidden"></audio>
       </section>
 
       <section id="result" class="panel hidden">

@@ -37,6 +37,12 @@ JUDGE_PROMPT = """判断用户回答属于哪一类。
 L0：回答给出了和问题相关的关键机制或因果解释。
 recall_failure：知识方向基本正确，但用户想不起来、表达停滞、内容明显不完整。
 knowledge_gap：核心概念明显错误、方向错误，或基本没有掌握该知识点。
+
+重要判断原则：
+- 停顿、犹豫、"忘了"、"想不起来"等语音信号只能作为 Recall Failure（知识调取困难）的证据。
+- 不能仅因为停顿长或犹豫多就判为 Knowledge Gap。
+- Knowledge Gap 必须有明确的语义证据：事实性错误、核心概念错误、方向完全偏离。
+- 如果语音识别存在轻微异常，不要轻易判 Knowledge Gap，宁可判 Recall Failure。
 问题：{question}
 用户回答：{answer}"""
 

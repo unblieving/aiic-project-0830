@@ -8,6 +8,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from recall_trainer.api import ApiApp
+from recall_trainer.volcengine_asr import is_asr_configured, get_ws_port
+from recall_trainer.tts import is_tts_configured
 
 
 ROOT = Path(__file__).parent
@@ -18,6 +20,13 @@ APP = ApiApp()
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/api/voice-status":
+            self._send_json({
+                "asr_configured": is_asr_configured(),
+                "tts_configured": is_tts_configured(),
+                "ws_port": get_ws_port(),
+            })
+            return
         if parsed.path.startswith("/api/"):
             self._send_json(APP.handle("GET", self.path))
             return
@@ -63,8 +72,21 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "80"))
+
+    # Start WebSocket ASR server in background thread
+    ws_port = get_ws_port()
+    try:
+        from recall_trainer.ws_handler import start_ws_server
+        start_ws_server(ws_port)
+    except Exception as exc:
+        print(f"Warning: WebSocket ASR server failed to start: {exc}")
+
     server = ThreadingHTTPServer((host, port), Handler)
     print(f"Serving recall trainer on http://{host}:{port}")
+    if is_asr_configured():
+        print(f"Voice ASR WebSocket on ws://{host}:{ws_port}/ws/asr")
+    else:
+        print("Voice ASR not configured (set VOLCENGINE_API_KEY to enable)")
     server.serve_forever()
 
 

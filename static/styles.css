@@ -239,6 +239,113 @@ button.secondary:hover {
   line-height: 1.6;
 }
 
+/* Voice controls */
+.voice-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+  flex-wrap: wrap;
+}
+
+.voice-btn {
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 2px solid var(--primary);
+  border-radius: 999px;
+  background: white;
+  color: var(--primary);
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.voice-btn:hover {
+  background: var(--primary);
+  color: white;
+}
+
+.voice-btn-stop {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.voice-btn-stop:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.voice-btn.recording {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.voice-status-text {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.voice-transcript {
+  margin: 8px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fafb;
+  min-height: 60px;
+}
+
+.transcript-text {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.transcript-final {
+  color: var(--text);
+  font-weight: 600;
+  line-height: 1.6;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+/* TTS controls */
+.tts-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.tts-btn {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 14px;
+}
+
+.tts-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 400;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.voice-disabled {
+  opacity: 0.5;
+  cursor: not-allowed !important;
+}
+
 @media (max-width: 640px) {
   .shell {
     width: min(100vw - 20px, 960px);

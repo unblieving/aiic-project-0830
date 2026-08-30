@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from recall_trainer.llm import RecallCoachClient
+from recall_trainer.voice_signal import VoiceSignals, build_voice_signals, voice_signals_suggest_recall_failure
 from recall_trainer.state_machine import (
     QUESTION_BANK,
     SessionConfig,
@@ -82,6 +83,15 @@ class ApiApp:
         session = self._get_session(payload)
         active_attempt = session.current_attempt
         answer = str(payload.get("answer", ""))
+        input_mode = str(payload.get("inputMode", "text"))
+        voice_signals: VoiceSignals | None = None
+
+        # Build voice signals if provided
+        if input_mode == "voice" and payload.get("voiceSignals"):
+            voice_signals = build_voice_signals(
+                answer, payload["voiceSignals"]
+            )
+
         judged_level = None
         if session.status.value in {"QUESTION", "RETEST"}:
             judged_level = self._judge_level(
@@ -89,6 +99,7 @@ class ApiApp:
                 if session.status.value == "RETEST"
                 else session.current_attempt.original_question,
                 answer,
+                voice_signals=voice_signals,
             )
         session = answer_current_question(session, answer, judged_level)
         if judged_level and judged_level.value == "Knowledge Gap":
@@ -136,10 +147,31 @@ class ApiApp:
             raise ValueError("Session not found.")
         return session
 
-    def _judge_level(self, question: str, answer: str):
+    def _judge_level(self, question: str, answer: str, voice_signals: VoiceSignals | None = None):
         from recall_trainer.state_machine import RecallLevel
 
-        judged = self.llm.judge_recall(question, answer)
+        # If voice signals strongly suggest recall failure, bias toward failure
+        # but still let the semantic judge have the final say for knowledge gap
+        voice_suggests_failure = voice_signals and voice_signals_suggest_recall_failure(voice_signals)
+
+        # Build voice context for the judge
+        voice_context = ""
+        if voice_signals:
+            voice_context = (
+                f"\n语音信号（仅作为知识调取困难的证据，不能独立证明 Knowledge Gap）："
+                f"\n- 首次开口延迟: {voice_signals.first_speech_latency_ms}ms"
+                f"\n- 最长停顿: {voice_signals.max_pause_ms}ms"
+                f"\n- 犹豫次数: {voice_signals.hesitation_count}"
+                f"\n- 明确表达遗忘: {voice_signals.explicit_recall_failure}"
+            )
+
+        judged = self.llm.judge_recall(question, answer, voice_context=voice_context)
+
+        # If voice signals suggest recall failure and judge didn't find
+        # clear knowledge gap, prefer recall_failure
+        if voice_suggests_failure and judged != "knowledge_gap":
+            return RecallLevel.FAILURE
+
         if judged == "L0":
             return RecallLevel.L0
         if judged == "knowledge_gap":

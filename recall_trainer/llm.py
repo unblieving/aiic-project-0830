@@ -67,13 +67,15 @@ class RecallCoachClient:
         except (TimeoutError, ValueError, KeyError, urllib.error.URLError, json.JSONDecodeError):
             return fallback
 
-    def judge_recall(self, question: str, answer: str) -> str:
+    def judge_recall(self, question: str, answer: str, voice_context: str = "") -> str:
         fallback = _fallback_judge(answer)
         if _is_explicit_retrieval_failure(answer):
             return "recall_failure"
         if not self.api_key:
             return fallback
         prompt = JUDGE_PROMPT.format(question=question, answer=answer)
+        if voice_context:
+            prompt += voice_context
         try:
             parsed = json.loads(self._call_deepseek(prompt))
             level = str(parsed.get("recall_type") or parsed.get("recall_level") or fallback)

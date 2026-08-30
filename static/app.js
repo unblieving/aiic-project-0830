@@ -3,6 +3,26 @@ const state = {
   lastPayload: null,
 };
 
+// Voice state
+const voiceState = {
+  asrConfigured: false,
+  ttsConfigured: false,
+  wsPort: 8082,
+  ws: null,
+  audioContext: null,
+  mediaStream: null,
+  scriptProcessor: null,
+  analyser: null,
+  isRecording: false,
+  recordingStartTime: 0,
+  firstSpeechTime: 0,
+  maxPauseMs: 0,
+  currentPauseStart: 0,
+  isSpeaking: false,
+  finalTranscript: "",
+  partialTranscript: "",
+};
+
 const domainNames = {
   network: "计算机网络",
   os: "操作系统",
@@ -89,7 +109,16 @@ document.querySelector("#submit-answer").addEventListener("click", async () => {
     trainingError.textContent = "请先输入你的回答，哪怕只有一个确定的点。";
     return;
   }
-  const payload = await api("/api/answer", { sessionId: state.sessionId, answer: text });
+  const requestBody = { sessionId: state.sessionId, answer: text };
+
+  // If voice mode was used, include voice signals
+  if (voiceState.finalTranscript || voiceState.partialTranscript) {
+    requestBody.inputMode = "voice";
+    requestBody.voiceSignals = getVoiceSignals();
+  }
+
+  const payload = await api("/api/answer", requestBody);
+  resetVoiceState();
   showTraining(payload);
 });
 
@@ -100,6 +129,29 @@ document.querySelector("#show-result").addEventListener("click", () => {
 document.querySelector("#restart").addEventListener("click", () => {
   window.location.reload();
 });
+
+// Voice: check status on load
+(async function checkVoiceStatus() {
+  try {
+    const status = await api("/api/voice-status");
+    if (status && !status.error) {
+      voiceState.asrConfigured = status.asr_configured;
+      voiceState.ttsConfigured = status.tts_configured;
+      voiceState.wsPort = status.ws_port || 8082;
+    }
+  } catch (e) {
+    // Voice not available
+  }
+  updateVoiceUI();
+})();
+
+// Voice: start recording
+document.querySelector("#start-voice").addEventListener("click", startVoiceRecording);
+document.querySelector("#stop-voice").addEventListener("click", stopVoiceRecording);
+
+// TTS: play/stop
+document.querySelector("#tts-play").addEventListener("click", playTTS);
+document.querySelector("#tts-stop").addEventListener("click", stopTTS);
 
 function renderRatings() {
   ratings.innerHTML = "";
