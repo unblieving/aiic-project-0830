@@ -101,6 +101,44 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response["current"]["topic"], "自定义知识点")
         self.assertEqual(response["current"]["question"], "这是一道 DeepSeek 生成的问题？")
 
+    def test_next_question_generation_receives_covered_concepts(self):
+        class FakeLlm:
+            def __init__(self):
+                self.calls = []
+
+            def generate_question(self, role, domain, rating, **kwargs):
+                self.calls.append(kwargs)
+                index = kwargs.get("current_question_index", 1)
+                return {"topic": f"知识点{index}", "question": f"问题{index}？"}
+
+            def generate_scaffold(self, level, question, answer):
+                return "scaffold"
+
+            def generate_retest(self, topic, question):
+                return "retest"
+
+            def judge_recall(self, question, answer, voice_context=""):
+                return "L0"
+
+        llm = FakeLlm()
+        app = ApiApp(llm=llm)
+        session = app.handle(
+            "POST",
+            "/api/session",
+            {
+                "role": "backend",
+                "domains": ["network", "os", "db"],
+                "selfRatings": {"network": "high", "os": "mid", "db": "low"},
+            },
+        )
+
+        app.handle("POST", "/api/answer", {"sessionId": session["id"], "answer": "正确回答"})
+
+        self.assertEqual(llm.calls[0]["total_questions"], 5)
+        self.assertEqual(llm.calls[1]["current_question_index"], 2)
+        self.assertEqual(llm.calls[1]["covered_concepts"], ["知识点1"])
+        self.assertEqual(llm.calls[1]["already_asked_questions"], ["问题1？"])
+
     def test_retest_uses_llm_generated_variant(self):
         class FakeLlm:
             def generate_question(self, role, domain, rating):
@@ -243,6 +281,53 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(response["status"], "SCAFFOLD_L1")
         self.assertEqual(response["scaffold"], "先说一个你最确定的点。")
+
+    def test_reanswer_is_judged_before_marking_recovered(self):
+        class FakeLlm:
+            def __init__(self):
+                self.judged_questions = []
+
+            def generate_question(self, role, domain, rating):
+                return {"topic": "TCP 三次握手", "question": "TCP 为什么需要三次握手？"}
+
+            def generate_scaffold(self, level, question, answer):
+                return "scaffold"
+
+            def generate_retest(self, topic, question):
+                return "retest"
+
+            def judge_recall(self, question, answer, voice_context=""):
+                self.judged_questions.append((question, answer))
+                return "recall_failure" if "房价" in answer else "L0"
+
+            def generate_reference_answer(self, topic, question):
+                return {
+                    "reference_answer": "三次握手用于确认双方收发能力。",
+                    "key_points": ["确认发送能力", "确认接收能力"],
+                }
+
+        llm = FakeLlm()
+        app = ApiApp(llm=llm)
+        session = app.handle(
+            "POST",
+            "/api/session",
+            {
+                "role": "backend",
+                "domains": ["network", "os"],
+                "selfRatings": {"network": "high", "os": "mid"},
+            },
+        )
+        app.handle("POST", "/api/stuck", {"sessionId": session["id"]})
+        app.handle("POST", "/api/scaffold", {"sessionId": session["id"], "answer": "不知道"})
+        app.handle("POST", "/api/scaffold", {"sessionId": session["id"], "answer": "还是不知道"})
+        app.handle("POST", "/api/scaffold", {"sessionId": session["id"], "answer": "仍然不会"})
+
+        response = app.handle("POST", "/api/answer", {"sessionId": session["id"], "answer": "房价跌降发哦"})
+
+        self.assertIn(("TCP 为什么需要三次握手？", "房价跌降发哦"), llm.judged_questions)
+        first = response["summary"]["items"][0]
+        self.assertEqual(first["status"], "knowledge_gap")
+        self.assertEqual(response["status"], "QUESTION")
 
     def test_repeated_result_read_does_not_regenerate_reference_answer(self):
         class FakeLlm:

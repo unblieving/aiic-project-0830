@@ -6,6 +6,9 @@ from typing import Any
 from uuid import uuid4
 
 
+DEFAULT_QUESTION_COUNT = 5
+
+
 class TrainingStatus(str, Enum):
     QUESTION = "QUESTION"
     SCAFFOLD_L1 = "SCAFFOLD_L1"
@@ -47,6 +50,7 @@ class KnowledgeAttempt:
     standard_answer: str = ""
     reference_answer: str = ""
     key_points: list[str] = field(default_factory=list)
+    generated: bool = False
 
 
 @dataclass
@@ -288,7 +292,11 @@ def answer_current_question(
 
     if session.status == TrainingStatus.REANSWER:
         attempt.first_answer = answer
-        if judged_level == RecallLevel.KNOWLEDGE_GAP:
+        if judged_level in {RecallLevel.KNOWLEDGE_GAP, RecallLevel.FAILURE}:
+            attempt.first_recall_level = RecallLevel.KNOWLEDGE_GAP
+            _move_to_next_interleaving_question(session)
+            return session
+        if judged_level != RecallLevel.L0:
             attempt.first_recall_level = RecallLevel.KNOWLEDGE_GAP
             _move_to_next_interleaving_question(session)
             return session
@@ -398,7 +406,7 @@ def serialize_session(session: TrainingSession) -> dict[str, Any]:
 def _build_attempts(config: SessionConfig) -> list[KnowledgeAttempt]:
     attempts: list[KnowledgeAttempt] = []
     domain_cursors = {domain: 0 for domain in config.domains}
-    for domain in build_weighted_domain_sequence(config.domains, config.self_ratings, total=5):
+    for domain in build_weighted_domain_sequence(config.domains, config.self_ratings, total=DEFAULT_QUESTION_COUNT):
         bank = QUESTION_BANK.get(domain, [])
         if not bank:
             continue
@@ -436,7 +444,7 @@ def _build_attempts(config: SessionConfig) -> list[KnowledgeAttempt]:
 def build_weighted_domain_sequence(
     domains: list[str],
     self_ratings: dict[str, str],
-    total: int = 5,
+    total: int = DEFAULT_QUESTION_COUNT,
 ) -> list[str]:
     weighted = []
     for domain in domains:

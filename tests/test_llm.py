@@ -96,6 +96,13 @@ class LlmTests(unittest.TestCase):
 
         self.assertEqual(result, "knowledge_gap")
 
+    def test_judges_gibberish_as_knowledge_gap(self):
+        client = RecallCoachClient(api_key="")
+
+        for answer in ["哈哈", "随便", "asdf", "111", "房价跌降发哦", "我乱写的"]:
+            with self.subTest(answer=answer):
+                self.assertEqual(client.judge_recall("TCP 为什么需要三次握手？", answer), "knowledge_gap")
+
     def test_standard_answer_fallback_is_concise(self):
         client = RecallCoachClient(api_key="")
 

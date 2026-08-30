@@ -3,15 +3,21 @@ SYSTEM_PROMPT = """你是 AI 面试知识提取训练器的 Recall Coach。
 不要给标准答案，不要长篇讲解，不要替用户完成推理。
 业务状态由程序控制，你只生成当前状态需要的内容。"""
 
-QUESTION_PROMPT = """根据目标岗位、知识领域和用户自评，生成一个中文技术面试冷启动问题。
+QUESTION_PROMPT = """根据目标岗位、知识领域、用户自评和本轮已覆盖内容，生成一个中文技术面试冷启动问题。
 参考国内后端技术面试常见题型和高频知识结构，例如计算机网络、操作系统、数据库、Java/JVM/并发、Redis、数据结构、系统设计等。
 生成典型、高频、有追问价值的问题，不生成冷门偏题，不直接复制外部题库原文。
 题型可以变化：概念解释、机制原因、比较题、场景题、异常情况、追问题。
 自评只代表领域抽样优先级，不改变题目难度。
-只返回 JSON：{{"topic":"知识点","question":"问题"}}。
+本轮训练尽量覆盖 4~5 个不同知识点，避免重复考察已经覆盖过的核心概念。
+题目应适合技术实习面试，单题聚焦一个主要知识点。
+只返回 JSON：{{"concept":"知识点","question":"问题","domain":"领域"}}。
 目标岗位：{role}
+用户选择的领域：{selected_domains}
 知识领域：{domain}
-自评：{rating}"""
+自评：{rating}
+当前题号：{current_question_index}/{total_questions}
+已覆盖知识点：{covered_concepts}
+已问过的问题：{already_asked_questions}"""
 
 SCAFFOLD_PROMPTS = {
     "L1": """用户卡住了。只给认知层面的引导，不提供任何知识内容。
@@ -32,16 +38,19 @@ RETEST_PROMPT = """为同一个知识点生成一个不同问法的变式重测�
 知识点：{topic}
 原题：{question}"""
 
-JUDGE_PROMPT = """判断用户回答属于哪一类。
-只返回 JSON：{{"recall_type":"L0"}}、{{"recall_type":"recall_failure"}} 或 {{"recall_type":"knowledge_gap"}}。
-L0：回答给出了和问题相关的关键机制或因果解释。
-recall_failure：知识方向基本正确，但用户想不起来、表达停滞、内容明显不完整。
-knowledge_gap：核心概念明显错误、方向错误，或基本没有掌握该知识点。
+JUDGE_PROMPT = """严格判断用户是否真正回答对了技术问题，而不是判断用户是否尝试回答。
+优先返回 JSON：{{"verdict":"correct","confidence":0.0,"reason":"...","missing_points":[]}}。
+verdict 只能是 correct、partial、incorrect、recall_failure。
+correct：核心知识正确，覆盖题目主要要求，没有明显事实错误。
+partial：知道一部分，但缺关键机制或关键点，不能算成功调出。
+incorrect：内容错误、无关、胡乱输入、事实明显错误，不能算成功调出。
+recall_failure：明确表示不知道、忘了、想不起来、卡住。
 
 重要判断原则：
 - 停顿、犹豫、"忘了"、"想不起来"等语音信号只能作为 Recall Failure（知识调取困难）的证据。
 - 不能仅因为停顿长或犹豫多就判为 Knowledge Gap。
-- Knowledge Gap 必须有明确的语义证据：事实性错误、核心概念错误、方向完全偏离。
+- 不要因为回答变长、出现几个关键词、走完 scaffold 或重新提交就判 correct。
+- 用户乱写、无关内容、事实性错误、核心概念错误、方向完全偏离，必须判 incorrect。
 - 如果语音识别存在轻微异常，不要轻易判 Knowledge Gap，宁可判 Recall Failure。
 问题：{question}
 用户回答：{answer}"""

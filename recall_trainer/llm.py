@@ -30,16 +30,36 @@ class RecallCoachClient:
         self.model = model or os.getenv("DEEPSEEK_MODEL") or "deepseek-chat"
         self.timeout_seconds = timeout_seconds
 
-    def generate_question(self, role: str, domain: str, rating: str) -> dict[str, str]:
+    def generate_question(
+        self,
+        role: str,
+        domain: str,
+        rating: str,
+        *,
+        selected_domains: list[str] | None = None,
+        already_asked_questions: list[str] | None = None,
+        covered_concepts: list[str] | None = None,
+        current_question_index: int = 1,
+        total_questions: int = 5,
+    ) -> dict[str, str]:
         fallback = _fallback_question(domain)
         if not self.api_key:
             return fallback
-        prompt = QUESTION_PROMPT.format(role=role, domain=domain, rating=rating)
+        prompt = QUESTION_PROMPT.format(
+            role=role,
+            domain=domain,
+            rating=rating,
+            selected_domains=", ".join(selected_domains or [domain]),
+            already_asked_questions=json.dumps(already_asked_questions or [], ensure_ascii=False),
+            covered_concepts=json.dumps(covered_concepts or [], ensure_ascii=False),
+            current_question_index=current_question_index,
+            total_questions=total_questions,
+        )
         try:
             content = self._call_deepseek(prompt)
             parsed = json.loads(content)
             return {
-                "topic": str(parsed.get("topic") or fallback["topic"]),
+                "topic": str(parsed.get("concept") or parsed.get("topic") or fallback["topic"]),
                 "question": str(parsed.get("question") or fallback["question"]),
             }
         except (TimeoutError, ValueError, KeyError, urllib.error.URLError, json.JSONDecodeError):
@@ -78,7 +98,15 @@ class RecallCoachClient:
             prompt += voice_context
         try:
             parsed = json.loads(self._call_deepseek(prompt))
-            level = str(parsed.get("recall_type") or parsed.get("recall_level") or fallback)
+            verdict = str(parsed.get("verdict") or "").lower()
+            if verdict == "correct":
+                level = "L0"
+            elif verdict in {"partial", "incorrect"}:
+                level = "knowledge_gap" if verdict == "incorrect" else "recall_failure"
+            elif verdict == "recall_failure":
+                level = "recall_failure"
+            else:
+                level = str(parsed.get("recall_type") or parsed.get("recall_level") or fallback)
             if level == "Failure":
                 return "recall_failure"
             return level if level in {"L0", "recall_failure", "knowledge_gap"} else fallback
@@ -159,6 +187,8 @@ def _fallback_judge(answer: str) -> str:
         return "recall_failure"
     if _is_explicit_retrieval_failure(text):
         return "recall_failure"
+    if _looks_like_gibberish(text):
+        return "knowledge_gap"
     wrong_direction_markers = ["数据库索引", "排序算法", "哈希表", "加密", "安全传输", "https"]
     if "TCP" in text and any(marker in text for marker in wrong_direction_markers):
         return "knowledge_gap"
@@ -209,3 +239,14 @@ def _is_explicit_retrieval_failure(answer: str) -> bool:
         "cant remember",
     ]
     return any(marker in text for marker in markers)
+
+
+def _looks_like_gibberish(answer: str) -> bool:
+    text = answer.strip().lower()
+    markers = ["哈哈", "随便", "乱写", "asdf", "房价"]
+    if any(marker in text for marker in markers):
+        return True
+    if text.isdigit():
+        return True
+    ascii_letters = sum(1 for char in text if "a" <= char <= "z")
+    return bool(text) and ascii_letters == len(text)

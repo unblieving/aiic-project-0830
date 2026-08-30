@@ -93,7 +93,7 @@ class ApiApp:
             )
 
         judged_level = None
-        if session.status.value in {"QUESTION", "RETEST"}:
+        if session.status.value in {"QUESTION", "REANSWER", "RETEST"}:
             judged_level = self._judge_level(
                 session.current_attempt.retest_question
                 if session.status.value == "RETEST"
@@ -101,8 +101,19 @@ class ApiApp:
                 answer,
                 voice_signals=voice_signals,
             )
+        status_before = session.status.value
+        scaffold_level = session.current_hint_level.value if session.status.value == "REANSWER" else "L0"
         session = answer_current_question(session, answer, judged_level)
-        if judged_level and judged_level.value == "Knowledge Gap":
+        if judged_level:
+            print(
+                "[JUDGE] "
+                f"scaffold_level={scaffold_level} "
+                f"verdict={judged_level.value} "
+                "confidence=n/a "
+                f"status_before={status_before} "
+                f"status_after={session.status.value}"
+            )
+        if active_attempt.first_recall_level and active_attempt.first_recall_level.value == "Knowledge Gap":
             reference = self.llm.generate_reference_answer(
                 active_attempt.topic,
                 active_attempt.original_question,
@@ -117,6 +128,8 @@ class ApiApp:
                 attempt.topic,
                 attempt.original_question,
             )
+        if session.status.value == "QUESTION":
+            self._hydrate_first_question(session)
         response = serialize_session(session)
         if session.status.value.startswith("SCAFFOLD"):
             response["scaffold"] = self.llm.generate_scaffold(
@@ -124,7 +137,7 @@ class ApiApp:
                 session.current_attempt.original_question,
                 session.current_attempt.first_answer,
             )
-        if judged_level and judged_level.value == "Knowledge Gap":
+        if active_attempt.first_recall_level and active_attempt.first_recall_level.value == "Knowledge Gap":
             response["notice"] = "这题更像是 Knowledge Gap：先记录为知识缺口，后面结果页给你简洁标准答案。"
         return response
 
@@ -140,6 +153,12 @@ class ApiApp:
             return {"error": "Session not found."}
         result_payload = get_result_summary(session)
         print("[RESULT SERVER]", result_payload)
+        print(
+            "[RESULT] "
+            f"total_questions={result_payload['total_questions']} "
+            f"recalled_count={result_payload['recalled_count']} "
+            f"knowledge_gap_count={result_payload['knowledge_gap_count']}"
+        )
         return result_payload
 
     def _get_session(self, payload: dict[str, Any]) -> TrainingSession:
@@ -182,14 +201,44 @@ class ApiApp:
 
     def _hydrate_first_question(self, session: TrainingSession) -> None:
         attempt = session.current_attempt
+        if attempt.generated:
+            return
+        current_question_index = sum(1 for item in session.questions if item.first_recall_level is not None) + 1
+        covered_concepts = [
+            item.topic
+            for item in session.questions
+            if item.generated and item.first_recall_level is not None
+        ]
+        already_asked_questions = [
+            item.original_question
+            for item in session.questions
+            if item.generated and item.first_recall_level is not None
+        ]
         try:
-            generated = self.llm.generate_question(
-                session.config.role,
-                attempt.domain,
-                attempt.self_rating,
-            )
+            try:
+                generated = self.llm.generate_question(
+                    session.config.role,
+                    attempt.domain,
+                    attempt.self_rating,
+                    selected_domains=session.config.domains,
+                    already_asked_questions=already_asked_questions,
+                    covered_concepts=covered_concepts,
+                    current_question_index=current_question_index,
+                    total_questions=len(session.questions),
+                )
+            except TypeError:
+                generated = self.llm.generate_question(
+                    session.config.role,
+                    attempt.domain,
+                    attempt.self_rating,
+                )
+            print(f"[QUESTION] index={current_question_index}/{len(session.questions)} concept={generated.get('topic')}")
+            print("[QUESTION] source=deepseek")
         except Exception:
             topic, question, _retest = QUESTION_BANK.get(attempt.domain, QUESTION_BANK["network"])[0]
             generated = {"topic": topic, "question": question}
+            print(f"[QUESTION] index={current_question_index}/{len(session.questions)} concept={topic}")
+            print("[QUESTION] source=fallback")
         attempt.topic = generated["topic"]
         attempt.original_question = generated["question"]
+        attempt.generated = True

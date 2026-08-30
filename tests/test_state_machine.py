@@ -116,7 +116,7 @@ class StateMachineTests(unittest.TestCase):
         session = advance_scaffold(session, "不知道")
         session = advance_scaffold(session, "双方确认")
         session = advance_scaffold(session, "可以讲了")
-        session = answer_current_question(session, "三次握手确认双方发送和接收能力")
+        session = answer_current_question(session, "三次握手确认双方发送和接收能力", RecallLevel.L0)
 
         self.assertEqual(session.status, TrainingStatus.QUESTION)
         self.assertNotEqual(session.current_attempt.topic, "TCP 三次握手")
@@ -156,7 +156,7 @@ class StateMachineTests(unittest.TestCase):
         session = advance_scaffold(session, "不知道")
         session = advance_scaffold(session, "双方确认")
         session = advance_scaffold(session, "可以讲了")
-        session = answer_current_question(session, "三次握手确认双方发送和接收能力")
+        session = answer_current_question(session, "三次握手确认双方发送和接收能力", RecallLevel.L0)
         session = answer_current_question(session, "进程和线程不同")
         session = answer_current_question(session, "两次握手可能产生历史连接问题")
 
@@ -211,7 +211,7 @@ class StateMachineTests(unittest.TestCase):
         )
         session = mark_stuck(session)
         session = recover_from_scaffold(session, "双方确认")
-        session = answer_current_question(session, "三次握手确认双方发送和接收能力")
+        session = answer_current_question(session, "三次握手确认双方发送和接收能力", RecallLevel.L0)
         session = answer_current_question(session, "进程和线程不同")
         session = answer_current_question(session, "还是不会", RecallLevel.FAILURE)
 
@@ -269,6 +269,26 @@ class StateMachineTests(unittest.TestCase):
 
         first = get_result_summary(session)["attempts"][0]
         self.assertTrue(first["knowledge_gap"])
+        self.assertEqual(first["first_recall_level"], "Knowledge Gap")
+        self.assertEqual(session.status, TrainingStatus.QUESTION)
+
+    def test_reanswer_recall_failure_after_scaffolding_becomes_knowledge_gap(self):
+        session = start_session(
+            SessionConfig(
+                role="backend",
+                domains=["network", "os"],
+                self_ratings={"network": "high", "os": "mid"},
+            )
+        )
+        session = mark_stuck(session)
+        session = advance_scaffold(session, "还是没有")
+        session = advance_scaffold(session, "想不起来")
+        session = advance_scaffold(session, "还是不会")
+
+        session = answer_current_question(session, "房价跌降发哦", RecallLevel.FAILURE)
+
+        first = get_result_summary(session)["attempts"][0]
+        self.assertEqual(first["status"], "knowledge_gap")
         self.assertEqual(first["first_recall_level"], "Knowledge Gap")
         self.assertEqual(session.status, TrainingStatus.QUESTION)
 
