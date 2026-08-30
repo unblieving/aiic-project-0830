@@ -2,7 +2,10 @@
 // State
 // ============================================================
 
-const state = { sessionId: null, lastPayload: null, mode: null };
+const state = {
+  sessionId: null, lastPayload: null, mode: null,
+  phase: null, questionType: null, questionId: null, isRetest: false,
+};
 
 const voice = {
   asrConfigured: false, ttsConfigured: false, asrMode: "one_sentence",
@@ -105,10 +108,8 @@ document.querySelector("#recovered").addEventListener("click", async () => {
     sessionId: state.sessionId, answer: document.querySelector("#answer").value, recovered: true,
   }));
 });
-document.querySelector("#submit-answer").addEventListener("click", async () => {
-  const t = document.querySelector("#answer").value.trim();
-  if (!t) { document.querySelector("#training-error").textContent = "请先输入你的回答。"; return; }
-  showTraining(await api("/api/answer", { sessionId: state.sessionId, answer: t }));
+document.querySelector("#submit-answer").addEventListener("click", (event) => {
+  submitTextAnswer(event.currentTarget);
 });
 document.querySelector("#show-result").addEventListener("click", () => showResult());
 
@@ -168,7 +169,21 @@ function setTurnState(s) {
 // ============================================================
 
 function showTraining(payload) {
+  if (payload.error) {
+    const errEl = state.mode === "voice" ? document.querySelector("#voice-error") : document.querySelector("#training-error");
+    if (errEl) errEl.textContent = payload.error;
+    console.warn("[RENDER] blocked reason=api_error", payload.error);
+    return;
+  }
   state.lastPayload = payload;
+  state.phase = payload.status;
+  state.questionType = payload.status === "RETEST" ? "surprise_retest" : "question";
+  state.questionId = [
+    payload.id || state.sessionId || "session",
+    payload.current?.topic || "",
+    payload.current?.question || "",
+  ].join("|");
+  state.isRetest = payload.status === "RETEST";
   document.querySelector("#status-pill").textContent = payload.status;
   document.querySelector("#topic").textContent = payload.current.topic;
   const questionEl = document.querySelector("#question");
@@ -178,7 +193,7 @@ function showTraining(payload) {
   coachEl.classList.add("hidden");
   updateVoiceQuestionCount(payload);
 
-  const ids = ["stuck","recovered","more-scaffold","show-result",
+  const ids = ["stuck","recovered","more-scaffold","submit-answer","show-result",
                "voice-stuck","voice-recovered","voice-more-scaffold","voice-show-result"];
   ids.forEach((id) => {
     const el = document.querySelector(`#${id}`);
@@ -187,7 +202,7 @@ function showTraining(payload) {
   const show = (id) => { const el = document.querySelector(`#${id}`); if (el) el.classList.remove("hidden"); };
 
   if (payload.status === "QUESTION") {
-    show("stuck"); show("voice-stuck");
+    show("stuck"); show("submit-answer"); show("voice-stuck");
     if (state.mode === "text") {
       document.querySelector("#answer").value = "";
       document.querySelector("#answer").focus();
@@ -209,6 +224,7 @@ function showTraining(payload) {
   }
 
   if (payload.status === "REANSWER") {
+    show("submit-answer");
     const txt = payload.scaffold || "好，现在不看刚才的提示，重新完整回答一次最开始的问题。";
     coachEl.textContent = txt;
     if (state.mode === "text") coachEl.classList.remove("hidden");
@@ -216,7 +232,8 @@ function showTraining(payload) {
   }
 
   if (payload.status === "RETEST") {
-    show("stuck"); show("voice-stuck");
+    show("submit-answer");
+    if (state.mode === "voice") show("voice-stuck");
     if (state.mode === "text") {
       document.querySelector("#answer").value = "";
       document.querySelector("#answer").focus();
@@ -226,7 +243,7 @@ function showTraining(payload) {
     }
   }
 
-  if (payload.status === "DONE") {
+  if (payload.status === "DONE" || payload.status === "RESULT") {
     show("show-result"); show("voice-show-result");
     if (state.mode === "voice") {
       stopVoiceRecording(); setTurnState("IDLE");
@@ -262,6 +279,51 @@ async function playTTSAndThenListen(text, promptId) {
   const completed = await speakText(text, promptId);
   if (!completed || lastSpokenPromptId !== promptId) return;
   setTurnState("USER_READY");
+}
+
+async function submitTextAnswer(btn) {
+  console.log("[SUBMIT] clicked", {
+    phase: state.phase,
+    questionType: state.questionType,
+    questionId: state.questionId,
+    isRetest: state.isRetest,
+  });
+  const errEl = document.querySelector("#training-error");
+  if (errEl) errEl.textContent = "";
+  const answerEl = document.querySelector("#answer");
+  const answer = answerEl.value.trim();
+  console.log(`[SUBMIT] answer chars=${answer.length}`);
+  if (!answer) {
+    console.warn("[SUBMIT] blocked reason=empty_answer");
+    if (errEl) errEl.textContent = "请先输入你的回答。";
+    return;
+  }
+
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "正在分析…";
+  try {
+    const submitType = state.isRetest ? "surprise_retest" : "question";
+    console.log("[SUBMIT] sending type=", submitType);
+    const response = await fetch("/api/answer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: state.sessionId, answer }),
+    });
+    console.log("[SUBMIT] response status=", response.status);
+    const raw = await response.text();
+    console.log("[SUBMIT] response body=", raw);
+    const payload = JSON.parse(raw);
+    if (!response.ok || payload.error) throw new Error(payload.error || `HTTP ${response.status}`);
+    console.log("[SUBMIT] success next_state=", payload.status);
+    showTraining(payload);
+  } catch (err) {
+    console.error("[SUBMIT] failed error=", err);
+    if (errEl) errEl.textContent = `提交失败：${err.message}`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
 }
 
 async function speakText(text, promptId) {
