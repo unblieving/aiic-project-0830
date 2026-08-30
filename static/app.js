@@ -30,6 +30,7 @@ document.querySelectorAll("input[name='domain']").forEach((input) => {
 
 document.querySelector("#setup-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+  const submit = event.submitter || document.querySelector("#setup-form button[type='submit']");
   const domains = selectedDomains();
   const error = document.querySelector("#setup-error");
   error.textContent = "";
@@ -41,11 +42,13 @@ document.querySelector("#setup-form").addEventListener("submit", async (event) =
   domains.forEach((domain) => {
     selfRatings[domain] = document.querySelector(`#rating-${domain}`).value;
   });
+  setBusy(submit, true, "生成中...");
   const payload = await api("/api/session", {
     role: document.querySelector("#role").value,
     domains,
     selfRatings,
   });
+  setBusy(submit, false);
   if (payload.error) {
     error.textContent = payload.error;
     return;
@@ -116,12 +119,33 @@ function selectedDomains() {
 }
 
 async function api(path, payload) {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  return response.json();
+  try {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      return { error: "服务暂时不可用，请稍后重试。" };
+    }
+    return response.json();
+  } catch (_error) {
+    return { error: "网络连接失败，请确认服务正在运行。" };
+  }
+}
+
+function setBusy(button, busy, label) {
+  if (!button) {
+    return;
+  }
+  if (busy) {
+    button.dataset.originalText = button.textContent;
+    button.textContent = label;
+    button.disabled = true;
+  } else {
+    button.textContent = button.dataset.originalText || button.textContent;
+    button.disabled = false;
+  }
 }
 
 function showTraining(payload) {

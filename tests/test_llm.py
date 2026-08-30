@@ -15,6 +15,15 @@ class LlmTests(unittest.TestCase):
         self.assertEqual(result["topic"], "TCP 三次握手")
         self.assertIn("TCP", result["question"])
 
+    def test_generate_question_uses_deepseek_response_when_api_key_exists(self):
+        client = RecallCoachClient(api_key="test-key")
+
+        with patch.object(client, "_call_deepseek", return_value='{"topic":"缓存","question":"缓存为什么有用？"}'):
+            result = client.generate_question("backend", "os", "mid")
+
+        self.assertEqual(result["topic"], "缓存")
+        self.assertEqual(result["question"], "缓存为什么有用？")
+
     def test_l1_prompt_contains_no_knowledge_content(self):
         client = RecallCoachClient(api_key="")
 
@@ -35,6 +44,14 @@ class LlmTests(unittest.TestCase):
 
         self.assertIn("方向", result)
         self.assertLess(len(result), 80)
+
+    def test_generate_retest_uses_deepseek_response_when_api_key_exists(self):
+        client = RecallCoachClient(api_key="test-key")
+
+        with patch.object(client, "_call_deepseek", return_value='{"question":"DeepSeek 变式题？"}'):
+            result = client.generate_retest("TCP 三次握手", "TCP 为什么需要三次握手？")
+
+        self.assertEqual(result, "DeepSeek 变式题？")
 
     def test_judges_obvious_failure_as_failure(self):
         client = RecallCoachClient(api_key="")

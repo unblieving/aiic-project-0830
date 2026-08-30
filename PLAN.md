@@ -26,49 +26,49 @@
 
 ## Phase Order
 
-- [ ] Phase 0: repository docs, env example, initial commit.
-- [ ] Phase 1: mock static product flow.
-- [ ] Phase 2: deterministic training state machine.
-- [ ] Phase 3: DeepSeek integration with fallback.
-- [ ] Phase 4: verification and result presentation.
-- [ ] Phase 5: robustness checks.
-- [ ] Phase 6: restrained visual polish after P0 stability.
-- [ ] Phase 7: deployment notes for port 80 and public URL.
+- [x] Phase 0: repository docs, env example, initial commit.
+- [x] Phase 1: mock static product flow.
+- [x] Phase 2: deterministic training state machine.
+- [x] Phase 3: DeepSeek integration with fallback.
+- [x] Phase 4: verification and result presentation.
+- [x] Phase 5: robustness checks.
+- [x] Phase 6: restrained visual polish after P0 stability.
+- [x] Phase 7: deployment notes for port 80 and public URL.
 
 ## TDD Tasks
 
 ### Task 1: State Machine Setup
 
-- [ ] Write failing tests for starting a session with role, 1-3 domains, and self ratings.
-- [ ] Implement `start_session`.
-- [ ] Run tests and commit.
+- [x] Write failing tests for starting a session with role, 1-3 domains, and self ratings.
+- [x] Implement `start_session`.
+- [x] Run tests and commit.
 
 ### Task 2: Scaffolding Flow
 
-- [ ] Write failing tests for stuck -> L1 -> L2 -> L3 -> re-answer.
-- [ ] Implement explicit transitions.
-- [ ] Run tests and commit.
+- [x] Write failing tests for stuck -> L1 -> L2 -> L3 -> re-answer.
+- [x] Implement explicit transitions.
+- [x] Run tests and commit.
 
 ### Task 3: Retest Scheduling
 
-- [ ] Write failing tests for marking a coached topic for delayed retest after interleaving.
-- [ ] Implement interleaving counter and variant retest activation.
-- [ ] Run tests and commit.
+- [x] Write failing tests for marking a coached topic for delayed retest after interleaving.
+- [x] Implement interleaving counter and variant retest activation.
+- [x] Run tests and commit.
 
 ### Task 4: Verification Result
 
-- [ ] Write failing tests for `L2 -> L0` result records.
-- [ ] Implement result summary.
-- [ ] Run tests and commit.
+- [x] Write failing tests for `L2 -> L0` result records.
+- [x] Implement result summary.
+- [x] Run tests and commit.
 
 ### Task 5: DeepSeek Boundary
 
-- [ ] Write tests for API fallback when key is absent or API fails.
-- [ ] Implement DeepSeek-compatible client with strict prompts.
-- [ ] Run tests and commit.
+- [x] Write tests for API fallback when key is absent or API fails.
+- [x] Implement DeepSeek-compatible client with strict prompts.
+- [x] Run tests and commit.
 
 ### Task 6: UI Integration
 
-- [ ] Connect setup, answer submission, stuck flow, re-answer, retest, and result pages.
-- [ ] Verify manually in the browser.
-- [ ] Commit after the P0 demo path works.
+- [x] Connect setup, answer submission, stuck flow, re-answer, retest, and result pages.
+- [x] Verify manually through HTTP smoke tests.
+- [x] Commit after the P0 demo path works.

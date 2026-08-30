@@ -4,7 +4,7 @@ SYSTEM_PROMPT = """你是 AI 面试知识提取训练器的 Recall Coach。
 业务状态由程序控制，你只生成当前状态需要的内容。"""
 
 QUESTION_PROMPT = """根据目标岗位、知识领域和用户自评，生成一个中文技术面试冷启动问题。
-只返回 JSON：{"topic":"知识点","question":"问题"}。
+只返回 JSON：{{"topic":"知识点","question":"问题"}}。
 目标岗位：{role}
 知识领域：{domain}
 自评：{rating}"""
@@ -24,12 +24,12 @@ SCAFFOLD_PROMPTS = {
 
 RETEST_PROMPT = """为同一个知识点生成一个不同问法的变式重测题。
 必须测试同一核心知识，不复制原题。
-只返回 JSON：{"question":"变式问题"}。
+只返回 JSON：{{"question":"变式问题"}}。
 知识点：{topic}
 原题：{question}"""
 
 JUDGE_PROMPT = """判断用户回答是否完成了无提示独立提取。
-只返回 JSON：{"recall_level":"L0"} 或 {"recall_level":"Failure"}。
+只返回 JSON：{{"recall_level":"L0"}} 或 {{"recall_level":"Failure"}}。
 如果回答明显是不会、想不起来、空泛绕开问题，返回 Failure。
 如果回答给出了和问题相关的关键机制或因果解释，返回 L0。
 问题：{question}

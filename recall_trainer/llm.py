@@ -22,7 +22,7 @@ class RecallCoachClient:
         api_key: str | None = None,
         base_url: str | None = None,
         model: str | None = None,
-        timeout_seconds: int = 12,
+        timeout_seconds: int = 6,
     ) -> None:
         self.api_key = api_key if api_key is not None else os.getenv("DEEPSEEK_API_KEY", "")
         self.base_url = (base_url or os.getenv("DEEPSEEK_BASE_URL") or "https://api.deepseek.com").rstrip("/")
@@ -59,6 +59,12 @@ class RecallCoachClient:
         fallback = _fallback_retest(topic, question)
         if not self.api_key:
             return fallback
+        prompt = RETEST_PROMPT.format(topic=topic, question=question)
+        try:
+            parsed = json.loads(self._call_deepseek(prompt))
+            return str(parsed.get("question") or fallback)
+        except (TimeoutError, ValueError, KeyError, urllib.error.URLError, json.JSONDecodeError):
+            return fallback
 
     def judge_recall(self, question: str, answer: str) -> str:
         fallback = _fallback_judge(answer)
@@ -69,12 +75,6 @@ class RecallCoachClient:
             parsed = json.loads(self._call_deepseek(prompt))
             level = str(parsed.get("recall_level", fallback))
             return level if level in {"L0", "Failure"} else fallback
-        except (TimeoutError, ValueError, KeyError, urllib.error.URLError, json.JSONDecodeError):
-            return fallback
-        prompt = RETEST_PROMPT.format(topic=topic, question=question)
-        try:
-            parsed = json.loads(self._call_deepseek(prompt))
-            return str(parsed.get("question") or fallback)
         except (TimeoutError, ValueError, KeyError, urllib.error.URLError, json.JSONDecodeError):
             return fallback
 

@@ -4,6 +4,7 @@ from typing import Any
 
 from recall_trainer.llm import RecallCoachClient
 from recall_trainer.state_machine import (
+    QUESTION_BANK,
     SessionConfig,
     TrainingSession,
     advance_scaffold,
@@ -124,10 +125,14 @@ class ApiApp:
 
     def _hydrate_first_question(self, session: TrainingSession) -> None:
         attempt = session.current_attempt
-        generated = self.llm.generate_question(
-            session.config.role,
-            attempt.domain,
-            attempt.self_rating,
-        )
+        try:
+            generated = self.llm.generate_question(
+                session.config.role,
+                attempt.domain,
+                attempt.self_rating,
+            )
+        except Exception:
+            topic, question, _retest = QUESTION_BANK.get(attempt.domain, QUESTION_BANK["network"])[0]
+            generated = {"topic": topic, "question": question}
         attempt.topic = generated["topic"]
         attempt.original_question = generated["question"]

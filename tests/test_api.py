@@ -46,6 +46,35 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(response["error"], "Session not found.")
 
+    def test_start_falls_back_when_llm_question_generation_crashes(self):
+        class BrokenLlm:
+            def generate_question(self, role, domain, rating):
+                raise RuntimeError("network exploded")
+
+            def generate_scaffold(self, level, question, answer):
+                return "scaffold"
+
+            def generate_retest(self, topic, question):
+                return "retest"
+
+            def judge_recall(self, question, answer):
+                return "L0"
+
+        app = ApiApp(llm=BrokenLlm())
+
+        response = app.handle(
+            "POST",
+            "/api/session",
+            {
+                "role": "backend",
+                "domains": ["network"],
+                "selfRatings": {"network": "high"},
+            },
+        )
+
+        self.assertEqual(response["status"], "QUESTION")
+        self.assertEqual(response["current"]["topic"], "TCP 三次握手")
+
     def test_start_uses_llm_generated_question(self):
         class FakeLlm:
             def generate_question(self, role, domain, rating):
