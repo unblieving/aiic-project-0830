@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI 面试知识提取训练器</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section id="setup" class="panel">
+        <p class="eyebrow">AI 面试知识提取训练器</p>
+        <h1>让存量知识，答得出来</h1>
+        <p class="lead">
+          你可能已经刷过题、背过八股。我们不再教你一遍。我们训练的是：面试官突然问你的时候，你能不能把它调出来。
+        </p>
+
+        <form id="setup-form" class="setup-grid">
+          <label>
+            目标岗位
+            <select id="role">
+              <option value="backend">后端开发</option>
+              <option value="frontend">前端开发</option>
+              <option value="algorithm">算法</option>
+            </select>
+          </label>
+
+          <fieldset>
+            <legend>知识领域（选择 1-3 个）</legend>
+            <label class="check"><input type="checkbox" name="domain" value="network" checked /> 计算机网络</label>
+            <label class="check"><input type="checkbox" name="domain" value="os" checked /> 操作系统</label>
+            <label class="check"><input type="checkbox" name="domain" value="db" /> 数据库</label>
+            <label class="check"><input type="checkbox" name="domain" value="ds" /> 数据结构</label>
+          </fieldset>
+
+          <div id="ratings" class="ratings"></div>
+          <p id="setup-error" class="error" role="alert"></p>
+          <button type="submit">开始训练</button>
+        </form>
+      </section>
+
+      <section id="training" class="panel hidden">
+        <div class="topline">
+          <span id="status-pill" class="pill">QUESTION</span>
+          <span id="topic"></span>
+        </div>
+        <h2 id="question"></h2>
+        <div id="coach-box" class="coach hidden"></div>
+        <textarea id="answer" rows="7" placeholder="输入回答……"></textarea>
+        <p id="training-error" class="error" role="alert"></p>
+        <div class="actions">
+          <button id="submit-answer" type="button">提交回答</button>
+          <button id="stuck" type="button" class="secondary">我卡住了</button>
+          <button id="recovered" type="button" class="secondary hidden">我想起来了</button>
+          <button id="more-scaffold" type="button" class="secondary hidden">继续提示</button>
+          <button id="show-result" type="button" class="secondary hidden">查看结果</button>
+        </div>
+      </section>
+
+      <section id="result" class="panel hidden">
+        <p class="eyebrow">本次知识提取训练</p>
+        <h2>刚才卡住的知识，现在是否调出来了？</h2>
+        <div id="metrics" class="metrics"></div>
+        <div id="attempts" class="attempts"></div>
+        <button id="restart" type="button">再练一次</button>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

@@ -10,6 +10,7 @@ from recall_trainer.state_machine import (
     answer_current_question,
     get_result_summary,
     mark_stuck,
+    recover_from_scaffold,
     serialize_session,
     start_session,
 )
@@ -44,6 +45,7 @@ class ApiApp:
             self_ratings=dict(payload.get("selfRatings", {})),
         )
         session = start_session(config)
+        self._hydrate_first_question(session)
         self.sessions[session.id] = session
         return serialize_session(session)
 
@@ -60,7 +62,10 @@ class ApiApp:
 
     def _scaffold(self, payload: dict[str, Any]) -> dict[str, Any]:
         session = self._get_session(payload)
-        session = advance_scaffold(session, str(payload.get("answer", "")))
+        if payload.get("recovered"):
+            session = recover_from_scaffold(session, str(payload.get("answer", "")))
+        else:
+            session = advance_scaffold(session, str(payload.get("answer", "")))
         response = serialize_session(session)
         if session.status.value.startswith("SCAFFOLD"):
             response["scaffold"] = self.llm.generate_scaffold(
@@ -75,6 +80,12 @@ class ApiApp:
     def _answer(self, payload: dict[str, Any]) -> dict[str, Any]:
         session = self._get_session(payload)
         session = answer_current_question(session, str(payload.get("answer", "")))
+        if session.status.value == "RETEST":
+            attempt = session.current_attempt
+            attempt.retest_question = self.llm.generate_retest(
+                attempt.topic,
+                attempt.original_question,
+            )
         return serialize_session(session)
 
     def _result(self, path: str) -> dict[str, Any]:
@@ -95,3 +106,13 @@ class ApiApp:
         if session is None:
             raise ValueError("Session not found.")
         return session
+
+    def _hydrate_first_question(self, session: TrainingSession) -> None:
+        attempt = session.current_attempt
+        generated = self.llm.generate_question(
+            session.config.role,
+            attempt.domain,
+            attempt.self_rating,
+        )
+        attempt.topic = generated["topic"]
+        attempt.original_question = generated["question"]

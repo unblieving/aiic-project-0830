@@ -8,6 +8,7 @@ from recall_trainer.state_machine import (
     answer_current_question,
     get_result_summary,
     mark_stuck,
+    recover_from_scaffold,
     start_session,
 )
 
@@ -94,6 +95,21 @@ class StateMachineTests(unittest.TestCase):
             session.current_attempt.original_question,
             session.current_attempt.retest_question,
         )
+
+    def test_user_can_recover_at_l2_then_must_reanswer(self):
+        session = start_session(
+            SessionConfig(
+                role="backend",
+                domains=["network", "os"],
+                self_ratings={"network": "high", "os": "mid"},
+            )
+        )
+        session = mark_stuck(session)
+        session = advance_scaffold(session, "和双方确认有关")
+        session = recover_from_scaffold(session, "我想起来一些了")
+
+        self.assertEqual(session.status, TrainingStatus.REANSWER)
+        self.assertEqual(session.current_attempt.first_recall_level, RecallLevel.L2)
 
     def test_result_summary_shows_first_to_retest_recall_transition(self):
         session = start_session(

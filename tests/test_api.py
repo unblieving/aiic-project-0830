@@ -46,6 +46,62 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(response["error"], "Session not found.")
 
+    def test_start_uses_llm_generated_question(self):
+        class FakeLlm:
+            def generate_question(self, role, domain, rating):
+                return {"topic": "自定义知识点", "question": "这是一道 DeepSeek 生成的问题？"}
+
+            def generate_scaffold(self, level, question, answer):
+                return "scaffold"
+
+            def generate_retest(self, topic, question):
+                return "retest"
+
+        app = ApiApp(llm=FakeLlm())
+
+        response = app.handle(
+            "POST",
+            "/api/session",
+            {
+                "role": "backend",
+                "domains": ["network"],
+                "selfRatings": {"network": "high"},
+            },
+        )
+
+        self.assertEqual(response["current"]["topic"], "自定义知识点")
+        self.assertEqual(response["current"]["question"], "这是一道 DeepSeek 生成的问题？")
+
+    def test_retest_uses_llm_generated_variant(self):
+        class FakeLlm:
+            def generate_question(self, role, domain, rating):
+                return {"topic": "TCP 三次握手", "question": "TCP 为什么需要三次握手？"}
+
+            def generate_scaffold(self, level, question, answer):
+                return "scaffold"
+
+            def generate_retest(self, topic, question):
+                return "DeepSeek 生成的 TCP 变式题？"
+
+        app = ApiApp(llm=FakeLlm())
+        session = app.handle(
+            "POST",
+            "/api/session",
+            {
+                "role": "backend",
+                "domains": ["network", "os"],
+                "selfRatings": {"network": "high", "os": "mid"},
+            },
+        )
+        app.handle("POST", "/api/stuck", {"sessionId": session["id"]})
+        app.handle("POST", "/api/scaffold", {"sessionId": session["id"], "answer": "双方确认", "recovered": True})
+        app.handle("POST", "/api/answer", {"sessionId": session["id"], "answer": "完整回答"})
+
+        response = app.handle("POST", "/api/answer", {"sessionId": session["id"], "answer": "穿插题回答"})
+
+        self.assertEqual(response["status"], "RETEST")
+        self.assertEqual(response["current"]["question"], "DeepSeek 生成的 TCP 变式题？")
+
 
 if __name__ == "__main__":
     unittest.main()

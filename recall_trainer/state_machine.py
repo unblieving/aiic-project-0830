@@ -138,6 +138,19 @@ def advance_scaffold(session: TrainingSession, user_text: str) -> TrainingSessio
     return session
 
 
+def recover_from_scaffold(session: TrainingSession, user_text: str) -> TrainingSession:
+    if session.status not in {
+        TrainingStatus.SCAFFOLD_L1,
+        TrainingStatus.SCAFFOLD_L2,
+        TrainingStatus.SCAFFOLD_L3,
+    }:
+        raise ValueError(f"Cannot recover from {session.status}.")
+    _append_first_answer(session, user_text)
+    session.current_attempt.first_recall_level = session.current_hint_level
+    session.status = TrainingStatus.REANSWER
+    return session
+
+
 def answer_current_question(session: TrainingSession, answer: str) -> TrainingSession:
     attempt = session.current_attempt
     if session.status == TrainingStatus.RETEST:
