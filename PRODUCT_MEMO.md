@@ -58,12 +58,15 @@
 - Setup：岗位、1-3 个领域、自评。
 - Training：文字回答、我卡住了、L1/L2/L3、我想起来了、强制完整重答。
 - Verification：穿插题、变式重测、首次 vs 重测对比。
-- Result：知识点、自评、First Recall Level、Retest Recall Level、`Lx -> Ly`。
+- Result：Independent Recall、Improved Recall、Knowledge Gap、知识点、自评、First Recall Level、Retest Recall Level、`Lx -> Ly`。
+- Optional Voice：接入火山引擎豆包语音 TTS 与一句话 ASR，作为演示增强；文本模式仍是最稳定的 MVP 主路径。
+- Submission materials：README、Demo Script、调研记录、原型说明、架构图、测试与性能记录。
 
 验证命令：
 
 ```powershell
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests
+node --check static\app.js
 ```
 
-当前测试覆盖 20 个用例。
+当前本地测试覆盖 57 个用例。
