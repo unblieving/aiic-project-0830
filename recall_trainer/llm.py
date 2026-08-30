@@ -11,6 +11,7 @@ from recall_trainer.prompts import (
     QUESTION_PROMPT,
     RETEST_PROMPT,
     SCAFFOLD_PROMPTS,
+    STANDARD_ANSWER_PROMPT,
     SYSTEM_PROMPT,
 )
 from recall_trainer.state_machine import QUESTION_BANK
@@ -73,9 +74,21 @@ class RecallCoachClient:
         prompt = JUDGE_PROMPT.format(question=question, answer=answer)
         try:
             parsed = json.loads(self._call_deepseek(prompt))
-            level = str(parsed.get("recall_level", fallback))
-            return level if level in {"L0", "Failure"} else fallback
+            level = str(parsed.get("recall_type") or parsed.get("recall_level") or fallback)
+            if level == "Failure":
+                return "recall_failure"
+            return level if level in {"L0", "recall_failure", "knowledge_gap"} else fallback
         except (TimeoutError, ValueError, KeyError, urllib.error.URLError, json.JSONDecodeError):
+            return fallback
+
+    def generate_standard_answer(self, topic: str, question: str) -> str:
+        fallback = _fallback_standard_answer(topic)
+        if not self.api_key:
+            return fallback
+        prompt = STANDARD_ANSWER_PROMPT.format(topic=topic, question=question)
+        try:
+            return self._call_deepseek(prompt).strip()[:260] or fallback
+        except (TimeoutError, ValueError, KeyError, urllib.error.URLError):
             return fallback
 
     def _call_deepseek(self, user_prompt: str) -> str:
@@ -126,8 +139,22 @@ def _fallback_scaffold(level: str, answer: str) -> str:
 def _fallback_judge(answer: str) -> str:
     text = answer.strip()
     if not text:
-        return "Failure"
+        return "recall_failure"
     failure_markers = ["不会", "不知道", "想不起来", "记不清", "不清楚", "忘了"]
     if any(marker in text for marker in failure_markers):
-        return "Failure"
-    return "L0" if len(text) >= 8 else "Failure"
+        return "recall_failure"
+    wrong_direction_markers = ["数据库索引", "排序算法", "哈希表"]
+    if "TCP" in text and any(marker in text for marker in wrong_direction_markers):
+        return "knowledge_gap"
+    return "L0" if len(text) >= 8 else "recall_failure"
+
+
+def _fallback_standard_answer(topic: str) -> str:
+    known = {
+        "TCP 三次握手": "正确结论：TCP 三次握手用于确认双方收发能力并避免历史连接干扰。\n关键知识点：\n1. 客户端和服务端都要确认发送、接收能力。\n2. 第三次握手确认客户端收到服务端响应。\n3. 两次握手可能建立失效历史连接。",
+        "HTTP 与 HTTPS": "正确结论：HTTPS 在 HTTP 基础上增加加密、身份认证和完整性保护。\n关键知识点：\n1. TLS 加密传输内容。\n2. 证书验证服务器身份。\n3. 摘要校验降低篡改风险。",
+    }
+    return known.get(
+        topic,
+        f"正确结论：{topic}是该题的核心知识点，需要先掌握基本定义和关键机制。\n关键知识点：\n1. 说明它解决的问题。\n2. 讲清核心机制。\n3. 能解释典型追问场景。",
+    )

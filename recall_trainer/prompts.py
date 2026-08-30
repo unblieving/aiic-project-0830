@@ -4,6 +4,10 @@ SYSTEM_PROMPT = """你是 AI 面试知识提取训练器的 Recall Coach。
 业务状态由程序控制，你只生成当前状态需要的内容。"""
 
 QUESTION_PROMPT = """根据目标岗位、知识领域和用户自评，生成一个中文技术面试冷启动问题。
+参考国内后端技术面试常见题型和高频知识结构，例如计算机网络、操作系统、数据库、Java/JVM/并发、Redis、数据结构、系统设计等。
+生成典型、高频、有追问价值的问题，不生成冷门偏题，不直接复制外部题库原文。
+题型可以变化：概念解释、机制原因、比较题、场景题、异常情况、追问题。
+自评只代表领域抽样优先级，不改变题目难度。
 只返回 JSON：{{"topic":"知识点","question":"问题"}}。
 目标岗位：{role}
 知识领域：{domain}
@@ -28,9 +32,21 @@ RETEST_PROMPT = """为同一个知识点生成一个不同问法的变式重测�
 知识点：{topic}
 原题：{question}"""
 
-JUDGE_PROMPT = """判断用户回答是否完成了无提示独立提取。
-只返回 JSON：{{"recall_level":"L0"}} 或 {{"recall_level":"Failure"}}。
-如果回答明显是不会、想不起来、空泛绕开问题，返回 Failure。
-如果回答给出了和问题相关的关键机制或因果解释，返回 L0。
+JUDGE_PROMPT = """判断用户回答属于哪一类。
+只返回 JSON：{{"recall_type":"L0"}}、{{"recall_type":"recall_failure"}} 或 {{"recall_type":"knowledge_gap"}}。
+L0：回答给出了和问题相关的关键机制或因果解释。
+recall_failure：知识方向基本正确，但用户想不起来、表达停滞、内容明显不完整。
+knowledge_gap：核心概念明显错误、方向错误，或基本没有掌握该知识点。
 问题：{question}
 用户回答：{answer}"""
+
+STANDARD_ANSWER_PROMPT = """用户在该题上属于 Knowledge Gap。生成一个简洁标准答案。
+格式尽量为：
+正确结论：一句话。
+关键知识点：
+1. ...
+2. ...
+3. ...
+不要长篇教学，不要超过 120 字。
+知识点：{topic}
+问题：{question}"""

@@ -164,6 +164,11 @@ button:hover {
   background: var(--primary-dark);
 }
 
+button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
 button.secondary {
   background: #e9edf1;
   color: var(--text);
@@ -210,6 +215,28 @@ button.secondary:hover {
   color: var(--primary);
   font-size: 24px;
   font-weight: 800;
+}
+
+.gap-label {
+  display: inline-flex;
+  margin: 4px 0 8px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #fff0d6;
+  color: #8a5200;
+  font-weight: 800;
+}
+
+.standard-answer {
+  white-space: pre-wrap;
+  margin: 0;
+  border-left: 4px solid #d98a1f;
+  background: #fffaf0;
+  padding: 12px;
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.6;
 }
 
 @media (max-width: 640px) {

@@ -20,12 +20,31 @@ The important result is the hint dependency transition, for example:
 TCP 三次握手: L2 -> L0
 ```
 
+The result page now separates:
+
+- Independent Recall
+- Improved Recall, such as `L2 -> L0`
+- Knowledge Gap, with a concise DeepSeek-generated standard answer when
+  available
+
 ## Tech Stack
 
 - Python standard-library HTTP server
 - HTML/CSS/JavaScript frontend
 - DeepSeek-compatible chat API
 - `unittest` for core flow tests
+
+## Training Strategy
+
+- Each session builds about 5-6 questions.
+- Domain sampling uses self ratings as priority weights: high 50%, medium 40%,
+  low 10%, normalized across the ratings the user selected.
+- Self rating only affects domain sampling priority. It does not change question
+  difficulty.
+- DeepSeek generates typical high-frequency backend interview questions using
+  common taxonomy such as networks, OS, databases, Java/JVM/concurrency, Redis,
+  data structures, and system design. No crawler, RAG, database, or copied
+  external question bank is used.
 
 ## Local Run
 

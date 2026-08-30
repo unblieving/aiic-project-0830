@@ -5,11 +5,12 @@
 - P0 产品文档落地：`SPEC.md`、`PLAN.md`、`README.md`。
 - Python 标准库 HTTP 服务：`server.py`。
 - 核心状态机：setup、问题、卡住、L1/L2/L3、强制完整重答、穿插题、变式重测、结果。
+- 训练策略升级：约 5-6 题、按 selfRating 加权抽领域、区分 Recall Failure 与 Knowledge Gap。
 - DeepSeek-compatible API 客户端：`recall_trainer/llm.py`。
 - Prompt 集中管理：`recall_trainer/prompts.py`。
 - 前端单页训练界面：`static/index.html`、`static/styles.css`、`static/app.js`。
 - Mock fallback：没有 `DEEPSEEK_API_KEY` 或 API 调用失败时仍可完整 Demo。
-- 单元测试覆盖核心状态机、API 行为、DeepSeek fallback。
+- 单元测试覆盖核心状态机、API 行为、DeepSeek fallback、Knowledge Gap、加权抽样。
 
 ## 尚未完成
 
@@ -29,6 +30,7 @@
 
 - LLM 只生成首题和变式重测题；穿插题保留确定性题库，保证 Demo 稳定。
 - 回答判定为轻量策略：有 DeepSeek 时由 LLM 判断 L0/Failure；无 key 或失败时用保守关键词 fallback。
+- Knowledge Gap 会在结果页展示简洁标准答案，但不进入 L1/L2/L3 脚手架。
 - 本地如果直接绑定 80 端口失败，可用 8080 测试；服务器部署时仍建议暴露 80。
 
 ## 启动方式

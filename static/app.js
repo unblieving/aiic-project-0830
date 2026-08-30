@@ -8,11 +8,15 @@ const domainNames = {
   os: "操作系统",
   db: "数据库",
   ds: "数据结构",
+  java: "Java / JVM / 并发",
+  redis: "Redis",
+  system_design: "系统设计",
 };
 
 const ratingNames = {
   low: "低",
   mid: "中",
+  medium: "中",
   high: "高",
 };
 
@@ -161,8 +165,8 @@ function showTraining(payload) {
   document.querySelector("#status-pill").textContent = payload.status;
   document.querySelector("#topic").textContent = `${payload.current.topic} · 自评 ${ratingNames[payload.current.self_rating]}`;
   document.querySelector("#question").textContent = payload.current.question;
-  coachBox.textContent = payload.scaffold || "";
-  coachBox.classList.toggle("hidden", !payload.scaffold);
+  coachBox.textContent = payload.scaffold || payload.notice || "";
+  coachBox.classList.toggle("hidden", !payload.scaffold && !payload.notice);
   answer.value = "";
 
   const inScaffold = payload.status.startsWith("SCAFFOLD");
@@ -186,7 +190,9 @@ function showResult(summary) {
   metrics.replaceChildren(
     metricNode("训练知识点", summary.trained_topics),
     metricNode("首次独立提取", summary.independent_first),
+    metricNode("Improved Recall", summary.improved_recall),
     metricNode("发生 Recall Failure", summary.recall_failures),
+    metricNode("Knowledge Gap", summary.knowledge_gaps),
     metricNode("训练后独立提取", summary.verified_after_training)
   );
 
@@ -218,7 +224,18 @@ function attemptNode(attempt) {
   const transition = document.createElement("p");
   transition.className = "transition";
   transition.textContent = `${attempt.transition}${attempt.verified ? " ✓" : ""}`;
-  article.append(title, rating, first, retest, transition);
+  article.append(title, rating, first);
+  if (attempt.knowledge_gap) {
+    const gap = document.createElement("p");
+    gap.className = "gap-label";
+    gap.textContent = "Knowledge Gap";
+    const standard = document.createElement("pre");
+    standard.className = "standard-answer";
+    standard.textContent = attempt.standard_answer || "已记录为知识缺口。";
+    article.append(gap, standard);
+  } else {
+    article.append(retest, transition);
+  }
   return article;
 }
 

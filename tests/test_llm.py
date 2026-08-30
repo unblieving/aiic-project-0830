@@ -58,7 +58,7 @@ class LlmTests(unittest.TestCase):
 
         result = client.judge_recall("TCP 为什么需要三次握手？", "不知道")
 
-        self.assertEqual(result, "Failure")
+        self.assertEqual(result, "recall_failure")
 
     def test_judges_substantive_answer_as_l0(self):
         client = RecallCoachClient(api_key="")
@@ -66,6 +66,30 @@ class LlmTests(unittest.TestCase):
         result = client.judge_recall("TCP 为什么需要三次握手？", "确认双方发送和接收能力，避免历史连接")
 
         self.assertEqual(result, "L0")
+
+    def test_judges_wrong_direction_as_knowledge_gap(self):
+        client = RecallCoachClient(api_key="")
+
+        result = client.judge_recall("TCP 为什么需要三次握手？", "TCP 三次握手是为了让数据库索引更快")
+
+        self.assertEqual(result, "knowledge_gap")
+
+    def test_standard_answer_fallback_is_concise(self):
+        client = RecallCoachClient(api_key="")
+
+        result = client.generate_standard_answer("TCP 三次握手", "TCP 为什么需要三次握手？")
+
+        self.assertIn("正确结论", result)
+        self.assertIn("关键知识点", result)
+        self.assertLess(len(result), 220)
+
+    def test_judge_accepts_deepseek_knowledge_gap(self):
+        client = RecallCoachClient(api_key="test-key")
+
+        with patch.object(client, "_call_deepseek", return_value='{"recall_type":"knowledge_gap"}'):
+            result = client.judge_recall("TCP 为什么需要三次握手？", "索引")
+
+        self.assertEqual(result, "knowledge_gap")
 
 
 if __name__ == "__main__":

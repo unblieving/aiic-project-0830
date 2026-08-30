@@ -80,6 +80,7 @@ class ApiApp:
 
     def _answer(self, payload: dict[str, Any]) -> dict[str, Any]:
         session = self._get_session(payload)
+        active_attempt = session.current_attempt
         answer = str(payload.get("answer", ""))
         judged_level = None
         if session.status.value in {"QUESTION", "RETEST"}:
@@ -90,13 +91,27 @@ class ApiApp:
                 answer,
             )
         session = answer_current_question(session, answer, judged_level)
+        if judged_level and judged_level.value == "Knowledge Gap":
+            active_attempt.standard_answer = self.llm.generate_standard_answer(
+                active_attempt.topic,
+                active_attempt.original_question,
+            )
         if session.status.value == "RETEST":
             attempt = session.current_attempt
             attempt.retest_question = self.llm.generate_retest(
                 attempt.topic,
                 attempt.original_question,
             )
-        return serialize_session(session)
+        response = serialize_session(session)
+        if session.status.value.startswith("SCAFFOLD"):
+            response["scaffold"] = self.llm.generate_scaffold(
+                session.current_hint_level.value,
+                session.current_attempt.original_question,
+                session.current_attempt.first_answer,
+            )
+        if judged_level and judged_level.value == "Knowledge Gap":
+            response["notice"] = "这题更像是 Knowledge Gap：先记录为知识缺口，后面结果页给你简洁标准答案。"
+        return response
 
     def _result(self, path: str) -> dict[str, Any]:
         _, _, query = path.partition("?")
@@ -121,7 +136,11 @@ class ApiApp:
         from recall_trainer.state_machine import RecallLevel
 
         judged = self.llm.judge_recall(question, answer)
-        return RecallLevel.L0 if judged == "L0" else RecallLevel.FAILURE
+        if judged == "L0":
+            return RecallLevel.L0
+        if judged == "knowledge_gap":
+            return RecallLevel.KNOWLEDGE_GAP
+        return RecallLevel.FAILURE
 
     def _hydrate_first_question(self, session: TrainingSession) -> None:
         attempt = session.current_attempt

@@ -24,6 +24,15 @@
 - `README.md`: product goal, mechanism, stack, local run, deployment notes.
 - `HANDOFF.md`: current completion state and safe next steps.
 
+## Training Strategy Upgrade
+
+- [x] Increase each session to about 5-6 questions.
+- [x] Use selfRating only for weighted domain sampling: high 50%, medium 40%, low 10%, normalized.
+- [x] Distinguish Recall Failure from Knowledge Gap.
+- [x] Route Recall Failure into L1/L2/L3 scaffolding.
+- [x] Route Knowledge Gap directly to the next question and show a concise standard answer on results.
+- [x] Upgrade DeepSeek prompts toward high-frequency backend interview question generation without crawler, database, or RAG.
+
 ## Phase Order
 
 - [x] Phase 0: repository docs, env example, initial commit.

@@ -6,6 +6,7 @@ from recall_trainer.state_machine import (
     TrainingStatus,
     advance_scaffold,
     answer_current_question,
+    build_weighted_domain_sequence,
     get_result_summary,
     mark_stuck,
     recover_from_scaffold,
@@ -45,6 +46,38 @@ class StateMachineTests(unittest.TestCase):
         self.assertEqual(session.current_attempt.topic, "TCP 三次握手")
         self.assertEqual(session.current_attempt.self_rating, "high")
         self.assertIn("TCP", session.current_attempt.original_question)
+
+    def test_start_session_builds_about_six_questions(self):
+        session = start_session(
+            SessionConfig(
+                role="backend",
+                domains=["network", "os", "db"],
+                self_ratings={"network": "high", "os": "mid", "db": "low"},
+            )
+        )
+
+        self.assertEqual(len(session.questions), 6)
+
+    def test_self_ratings_weight_domain_sampling(self):
+        sequence = build_weighted_domain_sequence(
+            ["network", "os", "db"],
+            {"network": "high", "os": "mid", "db": "low"},
+            total=6,
+        )
+
+        self.assertEqual(sequence.count("network"), 3)
+        self.assertEqual(sequence.count("os"), 2)
+        self.assertEqual(sequence.count("db"), 1)
+
+    def test_weighted_sampling_normalizes_missing_rating_levels(self):
+        sequence = build_weighted_domain_sequence(
+            ["network", "db"],
+            {"network": "high", "db": "low"},
+            total=6,
+        )
+
+        self.assertEqual(sequence.count("network"), 5)
+        self.assertEqual(sequence.count("db"), 1)
 
     def test_stuck_progresses_through_scaffolds_then_requires_reanswer(self):
         session = start_session(
@@ -156,6 +189,54 @@ class StateMachineTests(unittest.TestCase):
         self.assertEqual(tcp["transition"], "L1 -> Failure")
         self.assertFalse(tcp["verified"])
 
+    def test_knowledge_gap_skips_scaffolding_and_continues(self):
+        session = start_session(
+            SessionConfig(
+                role="backend",
+                domains=["network", "os"],
+                self_ratings={"network": "high", "os": "mid"},
+            )
+        )
+
+        session = answer_current_question(session, "TCP 是数据库索引", RecallLevel.KNOWLEDGE_GAP)
+
+        first = get_result_summary(session)["attempts"][0]
+        self.assertEqual(first["first_recall_level"], "Knowledge Gap")
+        self.assertTrue(first["knowledge_gap"])
+        self.assertEqual(session.status, TrainingStatus.QUESTION)
+        self.assertNotEqual(session.current_attempt.topic, "TCP 三次握手")
+
+    def test_recall_failure_answer_enters_scaffolding(self):
+        session = start_session(
+            SessionConfig(
+                role="backend",
+                domains=["network", "os"],
+                self_ratings={"network": "high", "os": "mid"},
+            )
+        )
+
+        session = answer_current_question(session, "我想不起来了", RecallLevel.FAILURE)
+
+        self.assertEqual(session.status, TrainingStatus.SCAFFOLD_L1)
+        self.assertEqual(session.current_hint_level, RecallLevel.L1)
+        self.assertIsNone(session.current_attempt.first_recall_level)
+
+    def test_result_summary_counts_knowledge_gaps_separately(self):
+        session = start_session(
+            SessionConfig(
+                role="backend",
+                domains=["network", "os"],
+                self_ratings={"network": "high", "os": "mid"},
+            )
+        )
+
+        session = answer_current_question(session, "TCP 是数据库索引", RecallLevel.KNOWLEDGE_GAP)
+        summary = get_result_summary(session)
+
+        self.assertEqual(summary["knowledge_gaps"], 1)
+        self.assertEqual(summary["recall_failures"], 0)
+        self.assertEqual(summary["independent_first"], 0)
+
     def test_all_queued_retests_are_asked_before_result(self):
         session = start_session(
             SessionConfig(
@@ -166,9 +247,9 @@ class StateMachineTests(unittest.TestCase):
         )
         session.current_index = 0
         session.status = TrainingStatus.RETEST
-        session.retest_queue = [2]
+        session.retest_queue = [1]
         session.questions[0].first_recall_level = RecallLevel.L1
-        session.questions[2].first_recall_level = RecallLevel.L2
+        session.questions[1].first_recall_level = RecallLevel.L2
 
         session = answer_current_question(session, "TCP 变式回答")
         self.assertEqual(session.status, TrainingStatus.RETEST)
