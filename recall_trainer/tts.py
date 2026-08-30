@@ -29,6 +29,32 @@ def is_tts_configured() -> bool:
     return bool(os.getenv("VOLCENGINE_API_KEY", ""))
 
 
+def _parse_tts_response(body: str) -> dict[str, Any]:
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError:
+        pass
+
+    parsed_items: list[dict[str, Any]] = []
+    for line in body.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            logger.warning("[TTS] skipped non-json response line")
+            continue
+        if isinstance(item, dict):
+            parsed_items.append(item)
+            if item.get("audio") or item.get("data"):
+                return item
+
+    if parsed_items:
+        return parsed_items[-1]
+    raise ValueError("TTS response did not contain valid JSON")
+
+
 def synthesize_speech(text: str, voice: str = "zh_female_01") -> dict[str, Any]:
     """Convert text to speech audio.
 
@@ -70,7 +96,8 @@ def synthesize_speech(text: str, voice: str = "zh_female_01") -> dict[str, Any]:
             method="POST",
         )
         with urllib.request.urlopen(request, timeout=10) as response:
-            data = json.loads(response.read().decode("utf-8"))
+            body = response.read().decode("utf-8", errors="replace")
+            data = _parse_tts_response(body)
 
         if data.get("code") not in {None, 0}:
             return {

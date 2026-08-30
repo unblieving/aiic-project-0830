@@ -22,6 +22,20 @@ class FakeResponse:
         return json.dumps(self.payload).encode("utf-8")
 
 
+class RawResponse:
+    def __init__(self, body):
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
+
+    def read(self):
+        return self.body.encode("utf-8")
+
+
 class TtsTests(unittest.TestCase):
     def test_builds_volcano_tts_v3_api_key_request(self):
         captured = {}
@@ -51,6 +65,18 @@ class TtsTests(unittest.TestCase):
         self.assertEqual(body["req_params"]["speaker"], "BV001_streaming")
         self.assertEqual(body["req_params"]["audio_params"]["format"], "mp3")
         self.assertEqual(body["req_params"]["audio_params"]["sample_rate"], 24000)
+        self.assertEqual(result["audio_base64"], "audio-data")
+
+    def test_parses_multiline_json_response_and_extracts_audio(self):
+        body = '\n'.join([
+            '{"code":0,"message":"ok"}',
+            '{"code":0,"data":"audio-data"}',
+        ])
+
+        with patch.dict(os.environ, {"VOLCENGINE_API_KEY": "test-key"}, clear=True):
+            with patch("urllib.request.urlopen", return_value=RawResponse(body)):
+                result = synthesize_speech("你好")
+
         self.assertEqual(result["audio_base64"], "audio-data")
 
     def test_upstream_business_error_returns_structured_error(self):
