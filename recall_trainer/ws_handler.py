@@ -59,6 +59,7 @@ async def _serve(port: int) -> None:
 async def _handle_connection(ws: Any) -> None:
     """Handle one browser WebSocket connection for ASR streaming."""
     asr_client: VolcengineASRClient | None = None
+    logger.warning("[ASR PROXY] browser connected")
     try:
         async for raw_message in ws:
             try:
@@ -131,6 +132,9 @@ async def _forward_audio(ws: Any, asr: VolcengineASRClient, msg: dict) -> None:
     if audio_b64:
         try:
             pcm_data = base64.b64decode(audio_b64)
+            if not getattr(asr, "_logged_browser_audio_format", False):
+                logger.warning("[ASR PROXY] browser audio format=pcm_s16le rate=16000 channels=1 bytes=%d transport=json_base64", len(pcm_data))
+                setattr(asr, "_logged_browser_audio_format", True)
             await asr.send_audio(pcm_data)
         except Exception as exc:
             logger.error("Error forwarding audio: %s", exc)

@@ -16,11 +16,13 @@ import base64
 import json
 import logging
 import os
+import uuid
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_ENDPOINT = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel"
+_DEFAULT_RESOURCE_ID = "volc.bigasr.sauc.duration"
 _DEFAULT_CLUSTER = "volcengine_streaming"
 
 
@@ -45,6 +47,7 @@ class VolcengineASRClient:
     ) -> None:
         self.api_key = api_key or os.getenv("VOLCENGINE_API_KEY", "")
         self.endpoint = endpoint or os.getenv("VOLCENGINE_ASR_ENDPOINT", _DEFAULT_ENDPOINT)
+        self.resource_id = os.getenv("VOLCENGINE_ASR_RESOURCE_ID", _DEFAULT_RESOURCE_ID)
         self.cluster = cluster or os.getenv("VOLCENGINE_ASR_CLUSTER", _DEFAULT_CLUSTER)
         self._ws: Any = None
         self._request_id: str = ""
@@ -58,16 +61,29 @@ class VolcengineASRClient:
                 "The 'websockets' package is required for voice features. "
                 "Install it with: pip install websockets"
             ) from exc
-        headers = {"Authorization": f"Bearer;{self.api_key}"}
-        self._ws = await websockets.connect(
-            self.endpoint,
-            additional_headers=headers,
-            max_size=2**24,
-            ping_interval=30,
-            ping_timeout=10,
-            close_timeout=5,
-        )
-        logger.info("Connected to Volcengine ASR: %s", self.endpoint)
+        self._request_id = str(uuid.uuid4())
+        headers = {
+            "X-Api-Key": self.api_key,
+            "X-Api-Resource-Id": self.resource_id,
+            "X-Api-Request-Id": self._request_id,
+            "X-Api-Sequence": "-1",
+        }
+        logger.warning("[ASR UPSTREAM] connecting endpoint=%s", self.endpoint)
+        logger.warning("[ASR UPSTREAM] handshake headers=%s", list(headers.keys()))
+        logger.warning("[ASR UPSTREAM] resource_id=%s cluster=%s", self.resource_id, self.cluster)
+        try:
+            self._ws = await websockets.connect(
+                self.endpoint,
+                additional_headers=headers,
+                max_size=2**24,
+                ping_interval=30,
+                ping_timeout=10,
+                close_timeout=5,
+            )
+        except Exception as exc:
+            self._log_handshake_failure(exc)
+            raise
+        logger.warning("[ASR UPSTREAM] handshake success")
 
     async def close(self) -> None:
         if self._ws:
@@ -79,8 +95,6 @@ class VolcengineASRClient:
 
     async def send_start(self) -> None:
         """Send the initial configuration message."""
-        import uuid
-        self._request_id = str(uuid.uuid4())
         msg = {
             "uid": "recall_trainer_user",
             "format": "pcm",
@@ -93,6 +107,7 @@ class VolcengineASRClient:
             "request_id": self._request_id,
             "nbest": 1,
         }
+        logger.warning("[ASR UPSTREAM] first frame keys=%s format=%s rate=%s codec=%s", list(msg.keys()), msg["format"], msg["rate"], msg["codec"])
         await self._ws.send(json.dumps(msg))
 
     async def send_audio(self, pcm_data: bytes) -> None:
@@ -133,3 +148,23 @@ class VolcengineASRClient:
         if code != 0:
             logger.warning("ASR error: code=%s msg=%s", code, raw.get("message", ""))
         return {"text": text, "is_final": is_final, "raw": raw}
+
+    @staticmethod
+    def _log_handshake_failure(exc: Exception) -> None:
+        status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
+        response = getattr(exc, "response", None)
+        if response is not None:
+            status = status or getattr(response, "status_code", None) or getattr(response, "status", None)
+        logger.error("[ASR UPSTREAM] handshake failed status=%s", status or "unknown")
+        headers = getattr(exc, "headers", None)
+        if headers is None and response is not None:
+            headers = getattr(response, "headers", None)
+        if headers:
+            logger.error("[ASR UPSTREAM] response headers=%s", dict(headers))
+        body = getattr(exc, "body", None)
+        if body is None and response is not None:
+            body = getattr(response, "body", None)
+        if body:
+            if isinstance(body, bytes):
+                body = body.decode("utf-8", errors="replace")
+            logger.error("[ASR UPSTREAM] response body=%s", str(body)[:1000])

@@ -134,7 +134,7 @@ document.querySelector("#voice-mute").addEventListener("click", () => {
   document.querySelector("#voice-mute").textContent = voice.isMuted ? "🔊 开启朗读" : "🔇 静音朗读";
   if (voice.isMuted && activeTts) {
     const current = activeTts;
-    cleanupTts(current.id, current.audio, current.objectUrl);
+    cancelTts(current.id, current.audio, current.objectUrl);
     setTurnState("USER_READY");
     startVoiceRecording();
   }
@@ -263,7 +263,7 @@ async function speakText(text, promptId) {
   if (!text) return true;
   const id = ++ttsGeneration;
   const old = activeTts;
-  if (old) cleanupTts(old.id, old.audio, old.objectUrl);
+  if (old) cancelTts(old.id, old.audio, old.objectUrl);
 
   console.log(`[TTS #${id}] request textLength=${text.length}`);
   try {
@@ -299,7 +299,7 @@ async function speakText(text, promptId) {
     await waitForAudioReady(id, audio);
     if (activeTts?.id !== id) {
       console.log(`[TTS #${id}] cancelled`);
-      cleanupTts(id, audio, objectUrl);
+      cancelTts(id, audio, objectUrl);
       return false;
     }
 
@@ -313,7 +313,7 @@ async function speakText(text, promptId) {
       return false;
     }
     console.log(`[TTS #${id}] ended`);
-    cleanupTts(id, audio, objectUrl);
+    cleanupTts(id, objectUrl);
     return true;
   } catch (err) {
     if (id !== ttsGeneration) {
@@ -323,7 +323,7 @@ async function speakText(text, promptId) {
     console.log(`[TTS #${id}] error`, err);
     showVoiceTextFallback("语音播放失败，已切换为文字显示");
     const current = activeTts;
-    if (current?.id === id) cleanupTts(id, current.audio, current.objectUrl);
+    if (current?.id === id) cancelTts(id, current.audio, current.objectUrl);
     return true;
   }
 }
@@ -347,9 +347,14 @@ function waitForAudioEnded(id, audio) {
   });
 }
 
-function cleanupTts(id, audio, objectUrl) {
+function cancelTts(id, audio, objectUrl) {
   if (activeTts?.id === id) activeTts = null;
   try { audio.pause(); } catch {}
+  cleanupTts(id, objectUrl);
+}
+
+function cleanupTts(id, objectUrl) {
+  if (activeTts?.id === id) activeTts = null;
   try { URL.revokeObjectURL(objectUrl); } catch {}
   console.log(`[TTS #${id}] cleanup`);
 }
