@@ -67,10 +67,11 @@ class TtsTests(unittest.TestCase):
         self.assertEqual(body["req_params"]["audio_params"]["sample_rate"], 24000)
         self.assertEqual(result["audio_base64"], "audio-data")
 
-    def test_parses_multiline_json_response_and_extracts_audio(self):
+    def test_parses_multiline_json_response_and_concatenates_audio_chunks(self):
         body = '\n'.join([
             '{"code":0,"message":"ok"}',
-            '{"code":0,"data":"audio-data"}',
+            '{"code":0,"data":"audio-"}',
+            '{"code":0,"data":"data"}',
         ])
 
         with patch.dict(os.environ, {"VOLCENGINE_API_KEY": "test-key"}, clear=True):

@@ -15,8 +15,9 @@ class ServerTtsTests(unittest.TestCase):
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
-        self.addCleanup(server.shutdown)
+        self.addCleanup(thread.join, 1)
         self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
 
         payload = {"text": "你好"}
         request = urllib.request.Request(

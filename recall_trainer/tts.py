@@ -36,6 +36,7 @@ def _parse_tts_response(body: str) -> dict[str, Any]:
         pass
 
     parsed_items: list[dict[str, Any]] = []
+    audio_chunks: list[str] = []
     for line in body.splitlines():
         line = line.strip()
         if not line:
@@ -47,8 +48,12 @@ def _parse_tts_response(body: str) -> dict[str, Any]:
             continue
         if isinstance(item, dict):
             parsed_items.append(item)
-            if item.get("audio") or item.get("data"):
-                return item
+            chunk = item.get("audio") or item.get("data")
+            if chunk:
+                audio_chunks.append(str(chunk))
+
+    if audio_chunks:
+        return {"code": 0, "data": "".join(audio_chunks)}
 
     if parsed_items:
         return parsed_items[-1]
