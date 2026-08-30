@@ -79,7 +79,16 @@ class ApiApp:
 
     def _answer(self, payload: dict[str, Any]) -> dict[str, Any]:
         session = self._get_session(payload)
-        session = answer_current_question(session, str(payload.get("answer", "")))
+        answer = str(payload.get("answer", ""))
+        judged_level = None
+        if session.status.value in {"QUESTION", "RETEST"}:
+            judged_level = self._judge_level(
+                session.current_attempt.retest_question
+                if session.status.value == "RETEST"
+                else session.current_attempt.original_question,
+                answer,
+            )
+        session = answer_current_question(session, answer, judged_level)
         if session.status.value == "RETEST":
             attempt = session.current_attempt
             attempt.retest_question = self.llm.generate_retest(
@@ -106,6 +115,12 @@ class ApiApp:
         if session is None:
             raise ValueError("Session not found.")
         return session
+
+    def _judge_level(self, question: str, answer: str):
+        from recall_trainer.state_machine import RecallLevel
+
+        judged = self.llm.judge_recall(question, answer)
+        return RecallLevel.L0 if judged == "L0" else RecallLevel.FAILURE
 
     def _hydrate_first_question(self, session: TrainingSession) -> None:
         attempt = session.current_attempt

@@ -79,6 +79,11 @@ QUESTION_BANK = {
             "进程与线程",
             "进程和线程的核心区别是什么？",
             "为什么线程切换通常比进程切换更轻？",
+        ),
+        (
+            "死锁条件",
+            "操作系统中死锁发生通常需要哪些条件？",
+            "为什么破坏循环等待可以避免死锁？",
         )
     ],
     "db": [
@@ -86,6 +91,11 @@ QUESTION_BANK = {
             "数据库索引",
             "数据库索引为什么能加速查询？",
             "为什么索引太多反而可能拖慢写入？",
+        ),
+        (
+            "事务隔离",
+            "数据库事务隔离级别主要想解决什么问题？",
+            "为什么较低隔离级别可能出现不可重复读？",
         )
     ],
     "ds": [
@@ -93,6 +103,11 @@ QUESTION_BANK = {
             "哈希表",
             "哈希表查询为什么通常接近 O(1)？",
             "哈希冲突会怎样影响查询性能？",
+        ),
+        (
+            "二叉搜索树",
+            "二叉搜索树为什么能支持较快查找？",
+            "为什么退化成链表后查找效率会变差？",
         )
     ],
 }
@@ -151,13 +166,22 @@ def recover_from_scaffold(session: TrainingSession, user_text: str) -> TrainingS
     return session
 
 
-def answer_current_question(session: TrainingSession, answer: str) -> TrainingSession:
+def answer_current_question(
+    session: TrainingSession,
+    answer: str,
+    judged_level: RecallLevel | None = None,
+) -> TrainingSession:
     attempt = session.current_attempt
     if session.status == TrainingStatus.RETEST:
         attempt.retest_answer = answer
-        attempt.retest_recall_level = RecallLevel.L0
+        attempt.retest_recall_level = judged_level or RecallLevel.L0
         attempt.verified = attempt.retest_recall_level == RecallLevel.L0
-        session.status = TrainingStatus.RESULT
+        if session.retest_queue:
+            session.current_index = session.retest_queue.pop(0)
+            session.current_hint_level = RecallLevel.L0
+            session.status = TrainingStatus.RETEST
+        else:
+            session.status = TrainingStatus.RESULT
         return session
 
     if session.status == TrainingStatus.REANSWER:
@@ -170,7 +194,7 @@ def answer_current_question(session: TrainingSession, answer: str) -> TrainingSe
 
     if session.status == TrainingStatus.QUESTION:
         attempt.first_answer = answer
-        attempt.first_recall_level = RecallLevel.L0
+        attempt.first_recall_level = judged_level or RecallLevel.L0
         _move_to_next_interleaving_question(session)
         return session
 

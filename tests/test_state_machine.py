@@ -137,6 +137,61 @@ class StateMachineTests(unittest.TestCase):
         self.assertEqual(tcp["transition"], "L3 -> L0")
         self.assertTrue(tcp["verified"])
 
+    def test_failed_retest_is_not_marked_verified(self):
+        session = start_session(
+            SessionConfig(
+                role="backend",
+                domains=["network", "os"],
+                self_ratings={"network": "high", "os": "mid"},
+            )
+        )
+        session = mark_stuck(session)
+        session = recover_from_scaffold(session, "双方确认")
+        session = answer_current_question(session, "三次握手确认双方发送和接收能力")
+        session = answer_current_question(session, "进程和线程不同")
+        session = answer_current_question(session, "还是不会", RecallLevel.FAILURE)
+
+        tcp = get_result_summary(session)["attempts"][0]
+        self.assertEqual(tcp["retest_recall_level"], "Failure")
+        self.assertEqual(tcp["transition"], "L1 -> Failure")
+        self.assertFalse(tcp["verified"])
+
+    def test_all_queued_retests_are_asked_before_result(self):
+        session = start_session(
+            SessionConfig(
+                role="backend",
+                domains=["network", "os", "db"],
+                self_ratings={"network": "high", "os": "mid", "db": "low"},
+            )
+        )
+        session.current_index = 0
+        session.status = TrainingStatus.RETEST
+        session.retest_queue = [2]
+        session.questions[0].first_recall_level = RecallLevel.L1
+        session.questions[2].first_recall_level = RecallLevel.L2
+
+        session = answer_current_question(session, "TCP 变式回答")
+        self.assertEqual(session.status, TrainingStatus.RETEST)
+        self.assertEqual(session.current_attempt.topic, "进程与线程")
+
+        session = answer_current_question(session, "OS 变式回答")
+        self.assertEqual(session.status, TrainingStatus.RESULT)
+
+    def test_single_domain_has_interleaving_question_before_retest(self):
+        session = start_session(
+            SessionConfig(
+                role="backend",
+                domains=["os"],
+                self_ratings={"os": "mid"},
+            )
+        )
+        session = mark_stuck(session)
+        session = recover_from_scaffold(session, "资源")
+        session = answer_current_question(session, "进程线程完整回答")
+
+        self.assertEqual(session.status, TrainingStatus.QUESTION)
+        self.assertNotEqual(session.current_attempt.topic, "进程与线程")
+
 
 if __name__ == "__main__":
     unittest.main()

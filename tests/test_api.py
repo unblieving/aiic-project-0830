@@ -83,6 +83,9 @@ class ApiTests(unittest.TestCase):
             def generate_retest(self, topic, question):
                 return "DeepSeek 生成的 TCP 变式题？"
 
+            def judge_recall(self, question, answer):
+                return "L0"
+
         app = ApiApp(llm=FakeLlm())
         session = app.handle(
             "POST",
@@ -101,6 +104,40 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(response["status"], "RETEST")
         self.assertEqual(response["current"]["question"], "DeepSeek 生成的 TCP 变式题？")
+
+    def test_answer_uses_llm_judgment_for_failed_retest(self):
+        class FakeLlm:
+            def generate_question(self, role, domain, rating):
+                return {"topic": "TCP 三次握手", "question": "TCP 为什么需要三次握手？"}
+
+            def generate_scaffold(self, level, question, answer):
+                return "scaffold"
+
+            def generate_retest(self, topic, question):
+                return "如果只有两次握手会怎样？"
+
+            def judge_recall(self, question, answer):
+                return "Failure" if "不会" in answer else "L0"
+
+        app = ApiApp(llm=FakeLlm())
+        session = app.handle(
+            "POST",
+            "/api/session",
+            {
+                "role": "backend",
+                "domains": ["network", "os"],
+                "selfRatings": {"network": "high", "os": "mid"},
+            },
+        )
+        app.handle("POST", "/api/stuck", {"sessionId": session["id"]})
+        app.handle("POST", "/api/scaffold", {"sessionId": session["id"], "answer": "双方确认", "recovered": True})
+        app.handle("POST", "/api/answer", {"sessionId": session["id"], "answer": "完整回答"})
+        app.handle("POST", "/api/answer", {"sessionId": session["id"], "answer": "穿插题回答"})
+
+        response = app.handle("POST", "/api/answer", {"sessionId": session["id"], "answer": "不会"})
+
+        self.assertEqual(response["summary"]["attempts"][0]["retest_recall_level"], "Failure")
+        self.assertFalse(response["summary"]["attempts"][0]["verified"])
 
 
 if __name__ == "__main__":

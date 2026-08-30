@@ -7,6 +7,7 @@ import urllib.request
 from typing import Any
 
 from recall_trainer.prompts import (
+    JUDGE_PROMPT,
     QUESTION_PROMPT,
     RETEST_PROMPT,
     SCAFFOLD_PROMPTS,
@@ -58,6 +59,18 @@ class RecallCoachClient:
         fallback = _fallback_retest(topic, question)
         if not self.api_key:
             return fallback
+
+    def judge_recall(self, question: str, answer: str) -> str:
+        fallback = _fallback_judge(answer)
+        if not self.api_key:
+            return fallback
+        prompt = JUDGE_PROMPT.format(question=question, answer=answer)
+        try:
+            parsed = json.loads(self._call_deepseek(prompt))
+            level = str(parsed.get("recall_level", fallback))
+            return level if level in {"L0", "Failure"} else fallback
+        except (TimeoutError, ValueError, KeyError, urllib.error.URLError, json.JSONDecodeError):
+            return fallback
         prompt = RETEST_PROMPT.format(topic=topic, question=question)
         try:
             parsed = json.loads(self._call_deepseek(prompt))
@@ -108,3 +121,13 @@ def _fallback_scaffold(level: str, answer: str) -> str:
         anchor = answer.strip().splitlines()[-1] if answer.strip() else "你刚才提到的方向"
         return f"好，就沿着你刚才说的“{anchor}”继续想。"
     return "可以尝试从双方发送与接收能力这个方向回忆。"
+
+
+def _fallback_judge(answer: str) -> str:
+    text = answer.strip()
+    if not text:
+        return "Failure"
+    failure_markers = ["不会", "不知道", "想不起来", "记不清", "不清楚", "忘了"]
+    if any(marker in text for marker in failure_markers):
+        return "Failure"
+    return "L0" if len(text) >= 8 else "Failure"

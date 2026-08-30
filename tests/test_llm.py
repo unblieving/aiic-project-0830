@@ -36,6 +36,20 @@ class LlmTests(unittest.TestCase):
         self.assertIn("方向", result)
         self.assertLess(len(result), 80)
 
+    def test_judges_obvious_failure_as_failure(self):
+        client = RecallCoachClient(api_key="")
+
+        result = client.judge_recall("TCP 为什么需要三次握手？", "不知道")
+
+        self.assertEqual(result, "Failure")
+
+    def test_judges_substantive_answer_as_l0(self):
+        client = RecallCoachClient(api_key="")
+
+        result = client.judge_recall("TCP 为什么需要三次握手？", "确认双方发送和接收能力，避免历史连接")
+
+        self.assertEqual(result, "L0")
+
 
 if __name__ == "__main__":
     unittest.main()

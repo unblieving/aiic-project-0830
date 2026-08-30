@@ -27,3 +27,10 @@ RETEST_PROMPT = """为同一个知识点生成一个不同问法的变式重测�
 只返回 JSON：{"question":"变式问题"}。
 知识点：{topic}
 原题：{question}"""
+
+JUDGE_PROMPT = """判断用户回答是否完成了无提示独立提取。
+只返回 JSON：{"recall_level":"L0"} 或 {"recall_level":"Failure"}。
+如果回答明显是不会、想不起来、空泛绕开问题，返回 Failure。
+如果回答给出了和问题相关的关键机制或因果解释，返回 L0。
+问题：{question}
+用户回答：{answer}"""

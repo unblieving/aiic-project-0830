@@ -158,25 +158,44 @@ function showTraining(payload) {
 function showResult(summary) {
   training.classList.add("hidden");
   result.classList.remove("hidden");
-  document.querySelector("#metrics").innerHTML = `
-    <div class="metric">训练知识点<strong>${summary.trained_topics}</strong></div>
-    <div class="metric">首次独立提取<strong>${summary.independent_first}</strong></div>
-    <div class="metric">发生 Recall Failure<strong>${summary.recall_failures}</strong></div>
-    <div class="metric">训练后独立提取<strong>${summary.verified_after_training}</strong></div>
-  `;
-  document.querySelector("#attempts").innerHTML = summary.attempts
-    .map(
-      (attempt) => `
-      <article class="attempt">
-        <h3>${attempt.topic}</h3>
-        <p>自评：${ratingNames[attempt.self_rating]}</p>
-        <p>首次：${attempt.first_recall_level}</p>
-        <p>变式重测：${attempt.retest_recall_level}${attempt.verified ? " ✓" : ""}</p>
-        <p class="transition">${attempt.transition}${attempt.verified ? " ✓" : ""}</p>
-      </article>
-    `
-    )
-    .join("");
+  const metrics = document.querySelector("#metrics");
+  metrics.replaceChildren(
+    metricNode("训练知识点", summary.trained_topics),
+    metricNode("首次独立提取", summary.independent_first),
+    metricNode("发生 Recall Failure", summary.recall_failures),
+    metricNode("训练后独立提取", summary.verified_after_training)
+  );
+
+  const attempts = document.querySelector("#attempts");
+  attempts.replaceChildren(...summary.attempts.map(attemptNode));
+}
+
+function metricNode(label, value) {
+  const node = document.createElement("div");
+  node.className = "metric";
+  node.append(document.createTextNode(label));
+  const strong = document.createElement("strong");
+  strong.textContent = value;
+  node.append(strong);
+  return node;
+}
+
+function attemptNode(attempt) {
+  const article = document.createElement("article");
+  article.className = "attempt";
+  const title = document.createElement("h3");
+  title.textContent = attempt.topic;
+  const rating = document.createElement("p");
+  rating.textContent = `自评：${ratingNames[attempt.self_rating] || attempt.self_rating}`;
+  const first = document.createElement("p");
+  first.textContent = `首次：${attempt.first_recall_level}`;
+  const retest = document.createElement("p");
+  retest.textContent = `变式重测：${attempt.retest_recall_level}${attempt.verified ? " ✓" : ""}`;
+  const transition = document.createElement("p");
+  transition.className = "transition";
+  transition.textContent = `${attempt.transition}${attempt.verified ? " ✓" : ""}`;
+  article.append(title, rating, first, retest, transition);
+  return article;
 }
 
 renderRatings();
