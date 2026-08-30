@@ -341,6 +341,8 @@ async function speakText(text, promptId) {
   const old = activeTts;
   if (old) cancelTts(old.id, old.audio, old.objectUrl);
 
+  console.log("[TTS REQUEST]", { text, reason: promptId, phase: voice.turnState });
+  console.log("[TTS]", id, "fetch start");
   console.log(`[TTS #${id}] request textLength=${text.length}`);
   try {
     const response = await fetch("/api/tts", {
@@ -361,6 +363,7 @@ async function speakText(text, promptId) {
       blob = base64ToAudioBlob(result.audio_base64, result.format || "mp3");
     }
 
+    console.log("[TTS]", id, "blob bytes=", blob.size);
     console.log(`[TTS #${id}] blob size=${blob.size}`);
     if (!blob.size) throw new Error("empty audio blob");
 
@@ -372,6 +375,7 @@ async function speakText(text, promptId) {
     const objectUrl = URL.createObjectURL(blob);
     const audio = new Audio(objectUrl);
     activeTts = { id, audio, objectUrl };
+    console.log("[TTS]", id, "created");
     await waitForAudioReady(id, audio);
     if (activeTts?.id !== id) {
       console.log(`[TTS #${id}] cancelled`);
@@ -379,15 +383,19 @@ async function speakText(text, promptId) {
       return false;
     }
 
+    console.log("[TTS]", id, "duration=", audio.duration);
     console.log(`[TTS #${id}] duration=${Number.isFinite(audio.duration) ? audio.duration.toFixed(3) : "unknown"}`);
+    console.log("[TTS]", id, "play()");
     console.log(`[TTS #${id}] play start`);
     await audio.play();
+    console.log("[TTS]", id, "play");
     console.log(`[TTS #${id}] play success`);
     const ended = await waitForAudioEnded(id, audio);
     if (!ended) {
       console.log(`[TTS #${id}] cancelled`);
       return false;
     }
+    console.log("[TTS]", id, "ended");
     console.log(`[TTS #${id}] ended`);
     cleanupTts(id, objectUrl);
     return true;
@@ -396,6 +404,7 @@ async function speakText(text, promptId) {
       console.log(`[TTS #${id}] cancelled`);
       return false;
     }
+    console.log("[TTS]", id, "error", err);
     console.log(`[TTS #${id}] error`, err);
     showVoiceTextFallback("语音播放失败，已切换为文字显示");
     const current = activeTts;
@@ -415,24 +424,44 @@ function waitForAudioReady(id, audio) {
 
 function waitForAudioEnded(id, audio) {
   return new Promise((resolve, reject) => {
-    audio.onended = () => resolve(true);
-    audio.onpause = () => {
-      if (activeTts?.id !== id) resolve(false);
-    };
-    audio.onerror = () => reject(new Error(`TTS #${id} audio playback error`));
+    audio.addEventListener("ended", () => resolve(true), { once: true });
+    audio.addEventListener("tts-cancelled", () => resolve(false), { once: true });
+    audio.addEventListener("pause", () => {
+      console.log("[TTS]", id, "pause");
+      console.log("[TTS DIAG]", ttsDiagnostics(audio));
+    });
+    audio.addEventListener("error", () => {
+      console.log("[TTS DIAG]", ttsDiagnostics(audio));
+      reject(new Error(`TTS #${id} audio playback error`));
+    }, { once: true });
   });
 }
 
 function cancelTts(id, audio, objectUrl) {
+  audio.dispatchEvent(new Event("tts-cancelled"));
   if (activeTts?.id === id) activeTts = null;
   try { audio.pause(); } catch {}
   cleanupTts(id, objectUrl);
 }
 
 function cleanupTts(id, objectUrl) {
-  if (activeTts?.id === id) activeTts = null;
+  if (activeTts?.id !== id) {
+    console.log("[TTS]", id, "skip stale cleanup");
+  } else {
+    activeTts = null;
+  }
   try { URL.revokeObjectURL(objectUrl); } catch {}
+  console.log("[TTS]", id, "cleanup");
   console.log(`[TTS #${id}] cleanup`);
+}
+
+function ttsDiagnostics(audio) {
+  return {
+    currentTime: audio.currentTime,
+    duration: audio.duration,
+    readyState: audio.readyState,
+    networkState: audio.networkState,
+  };
 }
 
 function base64ToAudioBlob(base64, format) {

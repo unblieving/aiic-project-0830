@@ -79,12 +79,14 @@ class Handler(BaseHTTPRequestHandler):
         if not text:
             self._send_json({"error": "No text provided"}, status=400)
             return
+        print("[TTS BACKEND] request chars=", len(text))
         
         try:
             from recall_trainer.tts import synthesize_speech
             result = synthesize_speech(text)
             if result.get("audio_base64"):
                 audio = base64.b64decode(result["audio_base64"])
+                print("[TTS BACKEND] response bytes=", len(audio))
                 content_type = "audio/wav" if result.get("format") == "wav" else "audio/mpeg"
                 self._send_bytes(audio, content_type=content_type)
                 return
