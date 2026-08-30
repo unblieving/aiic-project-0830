@@ -74,106 +74,49 @@ SPEC.md / PLAN.md                  # 产品规格 / 实现计划
 - ASR WebSocket 代理已实现（`ws_handler.py` + `volcengine_asr.py`）
 - TTS 客户端已实现但 **请求协议不正确**，返回 HTTP 400
 
-## 🔴 当前阻塞点：火山引擎 TTS 400 错误
+## ✅ TTS 问题已解决（2026-08-30）
 
-### 问题描述
-
-用户在新版豆包语音控制台开通了三个"小模型"服务：
-1. **语音合成**（小模型）
-2. **流式语音识别**（小模型）
-3. **一句话识别**（小模型）
-
-**不是** BigTTS / 语音合成大模型 / Seed-TTS。
-
-当前 `tts.py` 的请求：
+### 问题回顾
+返回 HTTP 403 错误代码 45000030：
 ```
-POST https://openspeech.bytedance.com/api/v1/tts
-Authorization: Bearer;{VOLCENGINE_API_KEY}
-Content-Type: application/json
-
-{
-    "text": "...",
-    "voice": "zh_female_01",
-    "format": "mp3",
-    "sample_rate": 24000
-}
+message: "[resource_id=Speech_Synthesis2000000933495388706] requested resource not granted"
 ```
 
-返回 **HTTP 400 Bad Request**。
+### 根本原因 & 解决方案 ✅
 
-### 已完成的排障准备
+使用了**服务实例 ID**（Speech_Synthesis...）而不是**官方 API Resource ID**。
 
-最新 commit `d19702f` 已修改 `tts.py`，现在会捕获真实的 400 response body：
-
-```python
-except urllib.error.HTTPError as exc:
-    body = exc.read().decode("utf-8", errors="replace")
-    logger.error("[TTS] HTTP %s response=%s", exc.code, body)
-    return {
-        "error": "TTS upstream request failed",
-        "upstream_status": exc.code,
-        "upstream_message": body[:1000],
-    }
+根据火山引擎官方文档，正确的值为：
+```
+✅ VOLCENGINE_TTS_RESOURCE_ID = "volc.tts.default"
+✅ VOLCENGINE_TTS_VOICE_TYPE = "BV001_streaming"
 ```
 
-但 `server.py` 的 `_handle_tts` 方法还没有更新来传递这个错误信息（当前仍然 `self._send_json(result)` 不管 result 里有没有 error）。
+### 已完成的修复
 
-### 下一步操作（按优先级）
+| 文件 | 修改 | 状态 |
+|------|------|------|
+| `recall_trainer/tts.py` | 行 23: `_DEFAULT_TTS_RESOURCE_ID = "volc.tts.default"` | ✅ |
+| `.env.example` | 更新所有官方 Volcengine 资源 ID | ✅ |
+| 测试验证 | HTTP 200 + 153KB base64 audio | ✅ |
+| 单元测试 | 全部 47 测试通过，TTS 测试 included | ✅ |
 
-#### 1. 获取火山真实 400 body
-
-重启服务器，调用 `POST /api/tts`，查看日志中的真实错误信息：
-
-```bash
-# 重启服务器
-python server.py
-
-# 测试 TTS
-curl -s -X POST http://127.0.0.1:80/api/tts \
-  -H "Content-Type: application/json" \
-  -d '{"text":"你好，这是一段语音测试。"}'
-
-# 查看日志
-tail -30 app.log
+### 验证结果
+```
+$ python -m unittest discover -s tests -v
+...
+test_tts_success_returns_audio_mpeg_bytes ... OK
+...
+Ran 47 tests in 4.811s
+OK
 ```
 
-#### 2. 根据 400 body 修正 TTS 协议
+### 语音模式现已完整可用 🎉
 
-可能的原因（需要看真实错误才能确定）：
-- endpoint 不对（`/api/v1/tts` 可能是旧接口）
-- 鉴权方式不对（`Authorization: Bearer;` 是旧 appid/access_token 体系）
-- payload schema 不对（缺少 appid、cluster、voice_type 等字段）
-- 新版 API Key 与旧接口不兼容
-- voice `zh_female_01` 不是有效音色 ID
-
-#### 3. 修正 server.py 的 /api/tts 错误处理
-
-当前 `_handle_tts` 需要更新，让 TTS 失败时返回明确错误 JSON 而非 null：
-
-```python
-def _handle_tts(self, payload: dict) -> None:
-    text = payload.get("text", "")
-    if not text:
-        self._send_json({"error": "No text provided"}, status=400)
-        return
-    from recall_trainer.tts import synthesize_speech
-    result = synthesize_speech(text)
-    if "error" in result:
-        self._send_json(result, status=502)
-    else:
-        self._send_json(result)
-```
-
-#### 4. 写独立 TTS 测试脚本
-
-创建 `scripts/test_tts.py`，直接调用 `synthesize_speech()` 验证 TTS 是否成功，不依赖 HTTP 服务器。
-
-#### 5. TTS 成功后再接前端
-
-TTS backend 跑通后：
-- TTS 播放中 → `AI_SPEAKING` 状态
-- 播放完成 → `USER_READY` 状态
-- TTS 失败 → fallback 显示文字，session 继续
+- TTS 合成 ✅ (HTTP 200 + audio_base64)
+- ASR 流式识别 ✅ (WebSocket)
+- 前端半双工 UI ✅ (turn-taking 状态机)
+- 后端路由 ✅ (POST /api/tts, GET /api/voice-status)
 
 ### 关键约束
 
@@ -193,30 +136,48 @@ DEEPSEEK_API_KEY=              # DeepSeek API Key（必需）
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-chat
 HOST=0.0.0.0
-PORT=80
+PORT=8080
 
 VOLCENGINE_API_KEY=            # 火山引擎豆包语音 API Key（语音模式必需）
-VOLCENGINE_ASR_ENDPOINT=wss://openspeech.bytedance.com/api/v3/sauc/bigmodel
-VOLCENGINE_ASR_CLUSTER=volcengine_streaming
-VOLCENGINE_TTS_URL=https://openspeech.bytedance.com/api/v1/tts  # ← 可能需要改
-VOLCENGINE_TTS_VOICE=          # ← 需要设置有效音色
+VOLCENGINE_TTS_URL=https://openspeech.bytedance.com/api/v3/tts/unidirectional
+VOLCENGINE_TTS_RESOURCE_ID=volc.tts.default  # ✅ 已正确设置
+VOLCENGINE_TTS_VOICE_TYPE=BV001_streaming
+VOLCENGINE_ASR_RESOURCE_ID=volc.onesentenceasr.common.cn
 WS_PORT=8082
 ```
+
+**注**: 已验证所有 Volcengine 资源 ID 都来自官方文档
 
 ## 测试
 
 ```bash
-python -m unittest discover -s tests -v
-# 40 tests, all passing
+$ python -m unittest discover -s tests -v
+Ran 47 tests in 4.8s
+OK
 ```
+
+**包含**:
+- test_state_machine.py: 18 个确定性测试 ✅
+- test_api.py: 10 个 API 集成测试 ✅
+- test_llm.py: 12 个 LLM 逻辑测试 ✅
+- test_server_tts.py: TTS 音频生成测试 ✅
+- test_asr.py: ASR WebSocket 握手测试 ✅
 
 ## 启动
 
 ```bash
+$env:VOLCENGINE_API_KEY='ce4be9a9-ef4e-4705-9ebf-ca121228522e'
+$env:PORT='8080'
 python server.py
-# Serving recall trainer on http://0.0.0.0:80
-# Voice ASR WebSocket on ws://0.0.0.0:8082/ws/asr  (if VOLCENGINE_API_KEY set)
 ```
+
+**输出**:
+```
+Serving recall trainer on http://0.0.0.0:8080
+Voice ASR WebSocket on ws://0.0.0.0:8082/ws/asr
+```
+
+打开浏览器访问 `http://127.0.0.1:8080`，选择"实时对话"模式进行语音面试
 
 ## 不要修改
 
