@@ -26,6 +26,7 @@ class Handler(BaseHTTPRequestHandler):
                 "asr_configured": is_asr_configured(),
                 "tts_configured": is_tts_configured(),
                 "ws_port": get_ws_port(),
+                "ws_url": _public_asr_ws_url(),
             })
             return
         if parsed.path.startswith("/api/"):
@@ -114,10 +115,20 @@ def main() -> None:
     server = ThreadingHTTPServer((host, port), Handler)
     print(f"Serving recall trainer on http://{host}:{port}")
     if is_asr_configured():
-        print(f"Voice ASR WebSocket on ws://{host}:{ws_port}/ws/asr")
+        public_ws_url = _public_asr_ws_url() or f"ws://{host}:{ws_port}/ws/asr"
+        print(f"Voice ASR WebSocket on {public_ws_url}")
     else:
         print("Voice ASR not configured (set VOLCENGINE_API_KEY to enable)")
     server.serve_forever()
+
+
+def _public_asr_ws_url() -> str:
+    value = os.getenv("ASR_PUBLIC_WS_URL", "").strip()
+    if value.startswith("https://"):
+        return "wss://" + value[len("https://"):]
+    if value.startswith("http://"):
+        return "ws://" + value[len("http://"):]
+    return value
 
 
 if __name__ == "__main__":

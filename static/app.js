@@ -5,7 +5,7 @@
 const state = { sessionId: null, lastPayload: null, mode: null };
 
 const voice = {
-  asrConfigured: false, ttsConfigured: false, wsPort: 8082,
+  asrConfigured: false, ttsConfigured: false, wsPort: 8082, wsUrl: "",
   ws: null, audioContext: null, mediaStream: null,
   scriptProcessor: null, analyser: null,
   isRecording: false, recordingStartTime: 0, firstSpeechTime: 0,
@@ -35,6 +35,7 @@ const domainNames = {
       voice.asrConfigured = s.asr_configured;
       voice.ttsConfigured = s.tts_configured;
       voice.wsPort = s.ws_port || 8082;
+      voice.wsUrl = s.ws_url || "";
     }
   } catch (e) { /* ok */ }
 })();
@@ -306,7 +307,11 @@ async function speakText(text, promptId) {
     console.log(`[TTS #${id}] play start`);
     await audio.play();
     console.log(`[TTS #${id}] play success`);
-    await waitForAudioEnded(id, audio);
+    const ended = await waitForAudioEnded(id, audio);
+    if (!ended) {
+      console.log(`[TTS #${id}] cancelled`);
+      return false;
+    }
     console.log(`[TTS #${id}] ended`);
     cleanupTts(id, audio, objectUrl);
     return true;
@@ -334,9 +339,9 @@ function waitForAudioReady(id, audio) {
 
 function waitForAudioEnded(id, audio) {
   return new Promise((resolve, reject) => {
-    audio.onended = () => resolve();
+    audio.onended = () => resolve(true);
     audio.onpause = () => {
-      if (activeTts?.id !== id) resolve();
+      if (activeTts?.id !== id) resolve(false);
     };
     audio.onerror = () => reject(new Error(`TTS #${id} audio playback error`));
   });
@@ -435,10 +440,15 @@ function startVoiceRecording() {
     voice.analyser = an; src.connect(an);
     const proc = ctx.createScriptProcessor(4096, 1, 1);
     voice.scriptProcessor = proc; an.connect(proc); proc.connect(ctx.destination);
-    const wsUrl = `ws://${window.location.hostname}:${voice.wsPort}/ws/asr`;
+    const wsUrl = getAsrWebSocketUrl();
+    console.log("[ASR] websocket url=", wsUrl);
+    console.log("[ASR] connecting");
     const ws = new WebSocket(wsUrl);
     voice.ws = ws;
-    ws.onopen = () => ws.send(JSON.stringify({ type: "start" }));
+    ws.onopen = () => {
+      console.log("[ASR] open");
+      ws.send(JSON.stringify({ type: "start" }));
+    };
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
       if (msg.type === "transcript") handleTranscript(msg);
@@ -447,10 +457,14 @@ function startVoiceRecording() {
         if (ve) ve.textContent = `语音识别错误: ${msg.message}`;
       }
     };
-    ws.onerror = () => {
+    ws.onerror = (event) => {
+      console.log("[ASR] error", event);
       const ve = document.querySelector("#voice-error");
       if (ve) ve.textContent = "语音服务连接失败，请切换到文本模式。";
       stopVoiceRecording();
+    };
+    ws.onclose = (event) => {
+      console.log("[ASR] close", event.code, event.reason);
     };
     voice.isRecording = true;
     voice.recordingStartTime = Date.now();
@@ -493,6 +507,13 @@ function startVoiceRecording() {
     if (ve) ve.textContent = `无法访问麦克风: ${err.message}`;
     setTurnState("IDLE");
   });
+}
+
+function getAsrWebSocketUrl() {
+  const configured = window.ASR_WS_URL || voice.wsUrl;
+  if (configured) return configured.replace(/^https:\/\//, "wss://").replace(/^http:\/\//, "ws://");
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.hostname}:${voice.wsPort}/ws/asr`;
 }
 
 function handleTranscript(msg) {
